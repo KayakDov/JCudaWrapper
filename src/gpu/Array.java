@@ -1,0 +1,479 @@
+package gpu;
+
+import java.lang.ref.Cleaner;
+import java.util.Arrays;
+import jcuda.Pointer;
+import jcuda.Sizeof;
+import jcuda.driver.CUdeviceptr;
+import jcuda.driver.CUfunction;
+import jcuda.driver.CUmodule;
+import jcuda.driver.JCudaDriver;
+import jcuda.runtime.JCuda;
+import jcuda.runtime.cudaMemcpyKind;
+
+/**
+ * Abstract class representing a GPU array that stores data on the GPU.
+ * This class provides various utilities for managing GPU memory and copying data
+ * between the host (CPU) and device (GPU).
+ * 
+ * <p>It supports different primitive types including byte, char, double, float, int,
+ * long, and short. The derived classes should implement specific functionalities for each
+ * type of data.</p>
+ * 
+ * <p>Note: This class is designed to be extended by specific array implementations.</p>
+ * 
+ * @author E. Dov Neimand
+ */
+abstract class Array implements AutoCloseable {
+
+    private final Cleaner.Cleanable cleanable;
+    protected final CUdeviceptr pointer;
+    public final int length;
+    private final PrimitiveType type;
+
+    /**
+     * Enum representing different primitive types and their sizes.
+     */
+    public enum PrimitiveType {
+        BYTE(Sizeof.BYTE), CHAR(Sizeof.CHAR), DOUBLE(Sizeof.DOUBLE), FLOAT(Sizeof.FLOAT), 
+        INT(Sizeof.INT), LONG(Sizeof.LONG), SHORT(Sizeof.SHORT);
+
+        public final int size;
+
+        /**
+         * Constructs a PrimitiveType enum.
+         * 
+         * @param numBytes The number of bytes per element.
+         */
+        private PrimitiveType(int numBytes) {
+            this.size = numBytes;
+        }
+    }
+
+    /**
+     * Constructs an Array with the given GPU pointer, length, and element type.
+     * 
+     * @param p The pointer to the GPU memory allocated for this array.
+     * @param length The length of the array.
+     * @param type The type of elements in the array.
+     * 
+     * @throws IllegalArgumentException if the pointer is null or length is negative.
+     */
+    protected Array(CUdeviceptr p, int length, PrimitiveType type) {
+        checkNull(p, type);        
+        checkPos(length);
+        
+        this.pointer = p;
+        this.length = length;
+        this.type = type;
+
+        // Register cleanup of GPU memory
+        cleanable = ResourceDealocator.register(this, pointer, pointer -> JCuda.cudaFree(pointer));
+    }
+
+    /**
+     * Creates a copy of this array.
+     * 
+     * @return A new Array instance with the same data.
+     */
+    public abstract Array copy();
+
+    /**
+     * Returns a pointer to the element at the specified index in this array.
+     * 
+     * @param index The index of the element.
+     * @return A CUdeviceptr pointing to the specified index.
+     * 
+     * @throws ArrayIndexOutOfBoundsException if the index is out of bounds.
+     */
+    protected CUdeviceptr pointer(int index) {
+        checkPos(index);checkAgainstLength(index);
+        
+        return pointer.withByteOffset(index * type.size);
+    }
+
+    /**
+     * Allocates GPU memory for an array of the specified size and type.
+     * 
+     * @param numElements The number of elements to allocate space for.
+     * @param type The type of the array elements.
+     * @return A CUdeviceptr pointing to the allocated memory.
+     * 
+     * @throws IllegalArgumentException if numElements is negative.
+     */
+    protected static CUdeviceptr empty(int numElements, PrimitiveType type) {
+        checkPos(numElements);
+               
+        CUdeviceptr p = new CUdeviceptr();
+        JCuda.cudaMalloc(p, numElements * type.size);
+        return p;
+    }
+
+    /**
+     * Copies data from a CPU array to a GPU array.
+     * 
+     * @param to The destination GPU array.
+     * @param fromCPUArray The source CPU array.
+     * @param toIndex The index in the destination array to start copying to.
+     * @param fromIndex The index in the source array to start copying from.
+     * @param length The number of elements to copy.
+     * @param type The type of the elements.
+     * 
+     * @throws IllegalArgumentException if any index is out of bounds or length is negative.
+     */
+    protected static void copy(Array to, Pointer fromCPUArray, int toIndex, int fromIndex, int length, PrimitiveType type) {
+        checkPos(toIndex, fromIndex, length);
+        to.checkAgainstLength(toIndex + length - 1); 
+        
+        JCuda.cudaMemcpy(
+                to.pointer.withByteOffset(toIndex * type.size),
+                fromCPUArray.withByteOffset(fromIndex * type.size),
+                length * type.size,
+                cudaMemcpyKind.cudaMemcpyHostToDevice
+        );
+    }
+
+    /**
+     * Copies data from this GPU array to another GPU array.
+     * 
+     * @param to The destination GPU array.
+     * @param toIndex The index in the destination array to start copying to.
+     * @param fromIndex The index in this array to start copying from.
+     * @param length The number of elements to copy.
+     * 
+     * @throws IllegalArgumentException if any index is out of bounds or length is negative.
+     */
+    public void get(Array to, int toIndex, int fromIndex, int length) {
+        checkPos(toIndex, fromIndex, length);
+        to.checkAgainstLength(toIndex + length - 1);
+        checkAgainstLength(fromIndex + length - 1);
+        checkNull(to);
+        
+        JCuda.cudaMemcpy(
+                to.pointer(toIndex),
+                pointer(fromIndex),
+                length * type.size,
+                cudaMemcpyKind.cudaMemcpyDeviceToDevice
+        );
+    }
+
+    /**
+     * Copies data from this GPU array to a CPU array.
+     * 
+     * @param toCPUArray The destination CPU array.
+     * @param toStart The starting index in the CPU array.
+     * @param fromStart The starting index in this GPU array.
+     * @param length The number of elements to copy.
+     * 
+     * @throws IllegalArgumentException if any index is out of bounds or length is negative.
+     */
+    protected void get(Pointer toCPUArray, int toStart, int fromStart, int length) {
+        checkPos(toStart, fromStart, length);
+        checkAgainstLength(fromStart + length - 1);
+        
+        JCuda.cudaMemcpy(
+                toCPUArray.withByteOffset(toStart * type.size),
+                pointer(fromStart),
+                length * type.size,
+                cudaMemcpyKind.cudaMemcpyDeviceToHost
+        );
+    }
+
+    /**
+     * Copies data from a CPU array to this GPU array.
+     * 
+     * @param fromCPUArray The source CPU array.
+     * @param toIndex The starting index in this GPU array.
+     * @param fromIndex The starting index in the CPU array.
+     * @param size The number of elements to copy.
+     * 
+     * @throws ArrayIndexOutOfBoundsException if any index is out of bounds or size is negative.
+     */
+    protected void set(Pointer fromCPUArray, int toIndex, int fromIndex, int size) {
+        checkPos(toIndex, fromIndex, size);
+        checkAgainstLength(toIndex + size);
+        
+        copy(this, fromCPUArray, toIndex, fromIndex, size, type);
+    }
+
+    
+    /**
+     * Copies data from a CPU array to this GPU array starting from the beginning.
+     * 
+     * @param fromCPUArray The source CPU array.
+     * @param length The number of elements to copy.
+     * 
+     * @throws ArrayIndexOutOfBoundsException if length is negative.
+     */
+    protected void set(Pointer fromCPUArray, int length) {
+        
+        set(fromCPUArray, 0, 0, length);
+    }
+
+    /**
+     * Copies data from a CPU array to this GPU array with a specified starting index.
+     * 
+     * @param fromCPUArray The source CPU array.
+     * @param toIndex The starting index in this GPU array.
+     * @param length The number of elements to copy.
+     * 
+     * @throws IllegalArgumentException if any index is out of bounds or length is negative.
+     */
+    protected void set(Pointer fromCPUArray, int toIndex, int length) {
+        checkPos(toIndex, length);
+        checkAgainstLength(toIndex + length);
+        
+        set(fromCPUArray, toIndex, 0, length);
+    }
+
+    /**
+     * Copies data from another GPU array to this GPU array.
+     * 
+     * @param from The source GPU array.
+     * @param toIndex The starting index in this GPU array.
+     * @param fromIndex The starting index in the source GPU array.
+     * @param length The number of elements to copy.
+     * 
+     * @throws ArrayIndexOutOfBoundsException if any index is out of bounds or length is negative.
+     */
+    protected void set(Array from, int toIndex, int fromIndex, int length) {
+        checkPos(toIndex, fromIndex, length);
+        checkAgainstLength(toIndex + length);
+        from.checkAgainstLength(fromIndex + length);
+        
+        JCuda.cudaMemcpy(
+                pointer(toIndex),
+                from.pointer(fromIndex),
+                length * type.size,
+                cudaMemcpyKind.cudaMemcpyDeviceToDevice
+        );
+    }
+
+    /**
+     * Frees the GPU memory allocated for this array.
+     * This method is invoked automatically when the object is closed.
+     */
+    @Override
+    public void close() {
+        cleanable.clean();
+    }
+
+
+    /**
+     * Fills a matrix with a scalar value directly on the GPU using a CUDA
+     * kernel.
+     *
+     * This function sets all elements of the matrix A to the given scalar
+     * value. The matrix A is stored in column-major order, and the leading
+     * dimension of A is specified by lda.
+     *
+     * @param fill the scalar value to set all elements of A
+     * @param inc The increment with which the method iterates over the array.
+     * @return this.
+     */
+    protected Array fillArray(Pointer fill, int inc) {
+
+        runKernel1d("src/gpu/ArrayFillKernel.ptx",
+                "fillArray",
+                new Pointer[]{
+                    fill,
+                    Pointer.to(new int[]{inc})
+                }
+        );
+        return this;
+    }
+
+    /**
+     * Fills a matrix with a value.
+     *
+     * @param height The height of the matrix.
+     * @param width The width of the matrix.
+     * @param lda The distance between the first element of each column of the
+     * matrix. This should be at least the height of the matrix.
+     * @param fill The value the matrix is to be filled with.
+     * @return this, after having been filled.
+     */
+    protected Array fillMatrix(int height, int width, int lda, Pointer fill) {
+        checkPos(width, height);
+        checkAgainstLength(width * height);
+        
+        runKernel2d("src/gpu/MatrixFillKernel.ptx",
+                "fillMatrix",
+                height,
+                width,
+                new Pointer[]{
+                    Pointer.to(new int[]{lda}),
+                    fill
+                }
+        );
+        return this;
+    }
+
+    /**
+     * Runs a CUDA kernel by loading the specified PTX file and executing the
+     * function with the provided arguments on the GPU. The first argumrnt of
+     * the kernel should be this pointer, and the 2nd argument should be this
+     * length.
+     *
+     * @param kernelFileName The path to the PTX file containing the compiled
+     * CUDA kernel. This file must be compiled beforehand using the `nvcc`
+     * compiler.
+     * @param kernelFunctionName The name of the kernel function to execute.
+     * This should match the function name defined in the .PTX file.
+     * @param args The arguments to pass to the CUDA kernel. These arguments
+     * will be passed in the order they appear. The kernel's expected parameters
+     * must match the types and order of these arguments.
+     *
+     * Example usage:      <pre>
+     * {@code
+     * runKernel("src/gpu/MatrixFillKernel.ptx", "fillMatrix", Pointer.to(new double[]{scalar}));
+     * }
+     * </pre>
+     *
+     * Process: 1. The PTX file is loaded, and a module is created from it. 2. A
+     * handle to the kernel function (`CUfunction`) is obtained. 3. Grid and
+     * block sizes are calculated based on the number of elements to process. 4.
+     * The provided arguments are packed into a `Pointer` array and combined
+     * with additional internal arguments such as the device memory pointer and
+     * the size of the matrix. 5. The kernel is launched using `cuLaunchKernel`,
+     * which runs the function on the GPU with the specified grid and block
+     * sizes. 6. Finally, the method synchronizes the context to ensure that the
+     * kernel execution completes before continuing.
+     */
+    private void runKernel(String kernelFileName, String kernelFunctionName, Pointer[] args,
+            int gridSizeX, int gridSizeY, int blockSizeX, int blockSizeY) {
+        checkPos(gridSizeX, gridSizeY, blockSizeX, blockSizeY);
+        
+        
+        // Load the PTX file
+        CUmodule module = new CUmodule();
+        JCudaDriver.cuModuleLoad(module, kernelFileName);
+
+        // Obtain a function handle for the kernel
+        CUfunction function = new CUfunction();
+        JCudaDriver.cuModuleGetFunction(function, module, kernelFunctionName);
+
+        // Prepare kernel parameters
+        Pointer kernelParameters = Pointer.to(args);
+
+        // Launch the kernel
+        JCudaDriver.cuLaunchKernel(function,
+                gridSizeX, gridSizeY, 1, // Grid size in 2D
+                blockSizeX, blockSizeY, 1, // Block size in 2D
+                0, null, // Shared memory size and stream
+                kernelParameters, null);
+
+        // Synchronize to wait for the kernel to finish
+        JCudaDriver.cuCtxSynchronize();
+    }
+
+    /**
+     * Runs the requested kernel on an array.
+     *
+     * @param kernelFileName The name and relative location of the kernel file.
+     * @param kernelFunctionName The name of the function in the kernel.
+     * @param args Sequentially correct arguments not including pointer and
+     * length.
+     */
+    private void runKernel1d(String kernelFileName, String kernelFunctionName, Pointer... args) {
+
+        int blockSizeX = 256;
+        int gridSizex = (length + blockSizeX - 1) / blockSizeX;  // Ensures all elements are covered
+        int blockSizeY = 1;
+        int gridSizeY = 1;
+
+        Pointer[] argsWithLocal = new Pointer[args.length + 2];
+        System.arraycopy(args, 0, argsWithLocal, 2, args.length);
+        argsWithLocal[0] = Pointer.to(pointer);
+        argsWithLocal[1] = Pointer.to(new int[]{length});
+
+        runKernel(kernelFileName, kernelFunctionName, argsWithLocal, gridSizex, gridSizeY, blockSizeX, blockSizeY);
+    }
+
+    /**
+     * Runs a kernel on 2d data.
+     *
+     * @param kernelFileName The name of the file the kernel is in.
+     * @param kernelFunctionName The name of the kernel function.
+     * @param width The width of the matrix.
+     * @param height The height of the matrix.
+     * @param args The sequentially correct arguments after pointer, height,
+     * width.
+     */
+    private void runKernel2d(String kernelFileName, String kernelFunctionName, int height, int width, Pointer... args) {
+
+        Pointer[] argsWithLocal = new Pointer[args.length + 3];
+        System.arraycopy(args, 0, argsWithLocal, 3, args.length);
+        argsWithLocal[0] = Pointer.to(pointer);
+        argsWithLocal[1] = Pointer.to(new int[]{height});
+        argsWithLocal[2] = Pointer.to(new int[]{width});
+
+        int blockSize = 16; // Threads per block in X direction (width)        
+
+        int gridSizeX = (width + blockSize - 1) / blockSize;
+        int gridSizeY = (height + blockSize - 1) / blockSize;
+
+        runKernel(kernelFileName, kernelFunctionName, argsWithLocal, gridSizeX, gridSizeY, blockSize, blockSize);
+
+    }
+
+    /**
+     * A pointer to a singleton array containing d.
+     * @param d A double that needs a pointer.
+     * @return A pointer to a singleton array containing d.
+     */
+   protected Pointer cpuPointer(double d){
+       return Pointer.to(new double[]{d});
+   }
+   
+   
+    /**
+     * Checks that all the numbers are positive.  An exception is thrown if not.
+     * @param maybePos A number that might be positive.
+     */
+    protected static void checkPos(int... maybePos){
+        checkLowerBound(0, maybePos);
+    }
+    
+    /**
+     * Checks that all the numbers are greater than or equal to the lower bound.  
+     * An exception is thrown if not.
+     * @param maybePos A number that might be greater than the lower bound.
+     */
+    protected static void checkLowerBound(int bound, int... maybePos){
+        if(Arrays.stream(maybePos).anyMatch(l -> l < bound))
+            throw new ArrayIndexOutOfBoundsException();
+    }
+    
+    /**
+     * Checks if any of the indeces are out of bounds, that is, greater than or 
+     * equal to the length.
+     * @param maybeInBounds A number that might or might not be out of bounds. 
+     */
+    protected void checkAgainstLength(int ... maybeInBounds){
+        checkUpperBound(length, maybeInBounds);
+    }
+    
+    /**
+     * Checks if any of the indeces are out of bounds, that is, greater than or 
+     * equal to the upper bound
+     * @param bound ALl elements passed must be less than this element..
+     * @param maybeInBounds A number that might or might not be out of bounds. 
+     */
+    protected void checkUpperBound(int bound, int ... maybeInBounds){
+        for(int needsChecking: maybeInBounds)
+            if(needsChecking >= bound)
+                throw new ArrayIndexOutOfBoundsException(needsChecking + " is greater than the bound " + bound);
+    }
+       
+    
+    /**
+     * Checks if any of the objects are null.  If they are a 
+     * NullPointerException is thrown.
+     * @param maybeNull Objects that might be null.
+     */
+    protected static void checkNull(Object... maybeNull){
+        if(Arrays.stream(maybeNull).anyMatch(l -> l == null))
+            throw new NullPointerException();
+    }
+}
