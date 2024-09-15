@@ -1,7 +1,9 @@
-package gpu;
+package storage;
 
+import processSupport.ResourceDealocator;
 import java.lang.ref.Cleaner;
 import java.util.Arrays;
+import javax.management.ImmutableDescriptor;
 import jcuda.Pointer;
 import jcuda.Sizeof;
 import jcuda.driver.CUdeviceptr;
@@ -10,6 +12,8 @@ import jcuda.driver.CUmodule;
 import jcuda.driver.JCudaDriver;
 import jcuda.runtime.JCuda;
 import jcuda.runtime.cudaMemcpyKind;
+import jcuda.runtime.cudaStream_t;
+import processSupport.Handle;
 
 /**
  * Abstract class representing a GPU array that stores data on the GPU.
@@ -68,7 +72,7 @@ abstract class Array implements AutoCloseable {
         this.type = type;
 
         // Register cleanup of GPU memory
-        cleanable = ResourceDealocator.register(this, pointer, pointer -> JCuda.cudaFree(pointer));
+        cleanable = ResourceDealocator.register(this, pointer -> JCuda.cudaFree(pointer), pointer);
     }
 
     /**
@@ -76,7 +80,7 @@ abstract class Array implements AutoCloseable {
      * 
      * @return A new Array instance with the same data.
      */
-    public abstract Array copy();
+    public abstract Array copy(Handle handle);
 
     /**
      * Returns a pointer to the element at the specified index in this array.
@@ -121,15 +125,15 @@ abstract class Array implements AutoCloseable {
      * 
      * @throws IllegalArgumentException if any index is out of bounds or length is negative.
      */
-    protected static void copy(Array to, Pointer fromCPUArray, int toIndex, int fromIndex, int length, PrimitiveType type) {
+    protected static void copy(Handle handle, Array to, Pointer fromCPUArray, int toIndex, int fromIndex, int length, PrimitiveType type) {
         checkPos(toIndex, fromIndex, length);
         to.checkAgainstLength(toIndex + length - 1); 
         
-        JCuda.cudaMemcpy(
-                to.pointer.withByteOffset(toIndex * type.size),
+        JCuda.cudaMemcpyAsync(to.pointer.withByteOffset(toIndex * type.size),
                 fromCPUArray.withByteOffset(fromIndex * type.size),
                 length * type.size,
-                cudaMemcpyKind.cudaMemcpyHostToDevice
+                cudaMemcpyKind.cudaMemcpyHostToDevice,
+                handle.getStream()
         );
     }
 
@@ -143,18 +147,55 @@ abstract class Array implements AutoCloseable {
      * 
      * @throws IllegalArgumentException if any index is out of bounds or length is negative.
      */
-    public void get(Array to, int toIndex, int fromIndex, int length) {
+    public void get(Handle handle, Array to, int toIndex, int fromIndex, int length) {
         checkPos(toIndex, fromIndex, length);
         to.checkAgainstLength(toIndex + length - 1);
         checkAgainstLength(fromIndex + length - 1);
         checkNull(to);
         
-        JCuda.cudaMemcpy(
-                to.pointer(toIndex),
+        JCuda.cudaMemcpyAsync(to.pointer(toIndex),
                 pointer(fromIndex),
                 length * type.size,
-                cudaMemcpyKind.cudaMemcpyDeviceToDevice
+                cudaMemcpyKind.cudaMemcpyDeviceToDevice,
+                handle.getStream()
         );
+    }
+    
+    
+    /**
+     * Copies data from this GPU array to another GPU array.  Allows for multiple 
+     * copying in parallel.
+     * 
+     * @param to The destination GPU array.
+     * @param toIndex The index in the destination array to start copying to.
+     * @param fromIndex The index in this array to start copying from.
+     * @param length The number of elements to copy.
+     * 
+     * @throws IllegalArgumentException if any index is out of bounds or length is negative.
+     */
+    public void get(Array to, int toIndex, int fromIndex, int length, Handle handle){
+        JCuda.cudaMemcpyAsync(
+                to.pointer(toIndex), 
+                pointer(fromIndex),
+                length * type.size,
+                cudaMemcpyKind.cudaMemcpyDeviceToDevice, 
+                handle.getStream());
+    }
+    
+    
+    /**
+     * Copies data to this GPU array from another GPU array. Allows for multiple 
+     * copying in parallel.
+     * 
+     * @param from The source GPU array.
+     * @param toIndex The index in the destination array to start copying to.
+     * @param fromIndex The index in this array to start copying from.
+     * @param length The number of elements to copy.
+     * 
+     * @throws IllegalArgumentException if any index is out of bounds or length is negative.
+     */
+    public void set(Handle handle, Array from, int toIndex, int fromIndex, int length){
+        from.get(this, toIndex, fromIndex, length, handle);
     }
 
     /**
@@ -167,15 +208,15 @@ abstract class Array implements AutoCloseable {
      * 
      * @throws IllegalArgumentException if any index is out of bounds or length is negative.
      */
-    protected void get(Pointer toCPUArray, int toStart, int fromStart, int length) {
+    protected void get(Handle handle, Pointer toCPUArray, int toStart, int fromStart, int length) {
         checkPos(toStart, fromStart, length);
         checkAgainstLength(fromStart + length - 1);
-        
-        JCuda.cudaMemcpy(
-                toCPUArray.withByteOffset(toStart * type.size),
+        //TODO:  cudaHostAlloc can be faster, but has risks.        
+        JCuda.cudaMemcpyAsync(toCPUArray.withByteOffset(toStart * type.size),
                 pointer(fromStart),
                 length * type.size,
-                cudaMemcpyKind.cudaMemcpyDeviceToHost
+                cudaMemcpyKind.cudaMemcpyDeviceToHost,
+                handle.getStream()
         );
     }
 
@@ -189,11 +230,11 @@ abstract class Array implements AutoCloseable {
      * 
      * @throws ArrayIndexOutOfBoundsException if any index is out of bounds or size is negative.
      */
-    protected void set(Pointer fromCPUArray, int toIndex, int fromIndex, int size) {
+    protected void set(Handle handle, Pointer fromCPUArray, int toIndex, int fromIndex, int size) {
         checkPos(toIndex, fromIndex, size);
         checkAgainstLength(toIndex + size);
         
-        copy(this, fromCPUArray, toIndex, fromIndex, size, type);
+        copy(handle, this, fromCPUArray, toIndex, fromIndex, size, type);
     }
 
     
@@ -205,9 +246,9 @@ abstract class Array implements AutoCloseable {
      * 
      * @throws ArrayIndexOutOfBoundsException if length is negative.
      */
-    protected void set(Pointer fromCPUArray, int length) {
+    protected void set(Handle handle, Pointer fromCPUArray, int length) {
         
-        set(fromCPUArray, 0, 0, length);
+        set(handle, fromCPUArray, 0, 0, length);
     }
 
     /**
@@ -219,35 +260,13 @@ abstract class Array implements AutoCloseable {
      * 
      * @throws IllegalArgumentException if any index is out of bounds or length is negative.
      */
-    protected void set(Pointer fromCPUArray, int toIndex, int length) {
+    protected void set(Handle handle, Pointer fromCPUArray, int toIndex, int length) {
         checkPos(toIndex, length);
         checkAgainstLength(toIndex + length);
         
-        set(fromCPUArray, toIndex, 0, length);
+        set(handle, fromCPUArray, toIndex, 0, length);
     }
-
-    /**
-     * Copies data from another GPU array to this GPU array.
-     * 
-     * @param from The source GPU array.
-     * @param toIndex The starting index in this GPU array.
-     * @param fromIndex The starting index in the source GPU array.
-     * @param length The number of elements to copy.
-     * 
-     * @throws ArrayIndexOutOfBoundsException if any index is out of bounds or length is negative.
-     */
-    protected void set(Array from, int toIndex, int fromIndex, int length) {
-        checkPos(toIndex, fromIndex, length);
-        checkAgainstLength(toIndex + length);
-        from.checkAgainstLength(fromIndex + length);
-        
-        JCuda.cudaMemcpy(
-                pointer(toIndex),
-                from.pointer(fromIndex),
-                length * type.size,
-                cudaMemcpyKind.cudaMemcpyDeviceToDevice
-        );
-    }
+    
 
     /**
      * Frees the GPU memory allocated for this array.
@@ -284,6 +303,13 @@ abstract class Array implements AutoCloseable {
     }
 
     /**
+     * Sets the contents of this array to 0.
+     */
+    public void fill0(Handle handle){
+        JCuda.cudaMemsetAsync(pointer, 0, length*type.size, handle.getStream());
+    }
+    
+    /**
      * Fills a matrix with a value.
      *
      * @param height The height of the matrix.
@@ -310,6 +336,8 @@ abstract class Array implements AutoCloseable {
     }
 
     /**
+     * TODO: Check the run kernel methods.  They may not work.
+     * 
      * Runs a CUDA kernel by loading the specified PTX file and executing the
      * function with the provided arguments on the GPU. The first argumrnt of
      * the kernel should be this pointer, and the 2nd argument should be this
@@ -438,10 +466,10 @@ abstract class Array implements AutoCloseable {
     /**
      * Checks that all the numbers are greater than or equal to the lower bound.  
      * An exception is thrown if not.
-     * @param maybePos A number that might be greater than the lower bound.
+     * @param needsCheck A number that might be greater than the lower bound.
      */
-    protected static void checkLowerBound(int bound, int... maybePos){
-        if(Arrays.stream(maybePos).anyMatch(l -> l < bound))
+    protected static void checkLowerBound(int bound, int... needsCheck){
+        if(Arrays.stream(needsCheck).anyMatch(l -> bound > l))
             throw new ArrayIndexOutOfBoundsException();
     }
     
@@ -476,4 +504,6 @@ abstract class Array implements AutoCloseable {
         if(Arrays.stream(maybeNull).anyMatch(l -> l == null))
             throw new NullPointerException();
     }
+    
+    
 }

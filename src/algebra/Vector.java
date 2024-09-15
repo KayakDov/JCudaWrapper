@@ -1,6 +1,6 @@
 package algebra;
 
-import gpu.DArray;
+import storage.DArray;
 import java.lang.ref.Cleaner;
 import java.lang.ref.ReferenceQueue;
 import jcuda.Pointer;
@@ -97,7 +97,7 @@ public class Vector extends RealVector {
      * @return An empty vector.  It may have gibberish values.
      */
     public static Vector empty(int size) {
-        return new Vector(DArray.emptyArray(size));
+        return new Vector(DArray.empty(size));
     }
 
     

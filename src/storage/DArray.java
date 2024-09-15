@@ -1,17 +1,19 @@
-package gpu;
+package storage;
 
+import processSupport.Handle;
 import java.util.Arrays;
 import jcuda.Pointer;
 import jcuda.driver.CUdeviceptr;
 import jcuda.jcublas.JCublas2;
 import jcuda.jcublas.cublasOperation;
+import jcuda.runtime.cudaStream_t;
 
 /**
  * This class provides functionalities to create and manipulate double arrays on
  * the GPU.
  *
  * TODO: create arrays other than double.
- * 
+ *
  * @author E. Dov Neimand
  */
 public class DArray extends Array {
@@ -19,23 +21,25 @@ public class DArray extends Array {
     /**
      * Creates a GPU array from a CPU array.
      *
+     * @param handle The gpu handle that manages this operation.
      * @param values The array to be copied to the GPU.
      * @throws IllegalArgumentException if the values array is null.
      */
-    public DArray(double... values) {
-        this(empty(values.length), values.length);
-        copy(this, values, 0, 0, values.length);
+    public DArray(Handle handle, double... values) {
+        this(Array.empty(values.length, PrimitiveType.DOUBLE), values.length);
+        copy(handle, this, values, 0, 0, values.length);
     }
 
     /**
      * Creates a copy of this array.
      *
+     * @param handle The gpu handle that manages this operation.
      * @return A new DArray that is a copy of this array.
      */
     @Override
-    public DArray copy() {
-        DArray copy = DArray.emptyArray(length);
-        get(copy, 0, 0, length);
+    public DArray copy(Handle handle) {
+        DArray copy = DArray.empty(length);
+        get(handle, copy, 0, 0, length);
         return copy;
     }
 
@@ -56,26 +60,16 @@ public class DArray extends Array {
      * @return A new DArray with the specified size.
      * @throws ArrayIndexOutOfBoundsException if size is negative.
      */
-    public static DArray emptyArray(int size) {
+    public static DArray empty(int size) {
         checkPos(size);
-        return new DArray(empty(size), size);
+        return new DArray(Array.empty(size, PrimitiveType.DOUBLE), size);
     }
 
-    /**
-     * Allocates space on the GPU and returns a pointer to the allocated space.
-     *
-     * @param size The number of elements to allocate space for.
-     * @return A pointer to the allocated space.
-     * @throws ArrayIndexOutOfBoundsException if size is negative.
-     */
-    protected static CUdeviceptr empty(int size) {
-        checkPos(size);
-        return Array.empty(size, PrimitiveType.DOUBLE);
-    }
 
     /**
      * Copies contents from a CPU array to a GPU array.
      *
+     * @param handle
      * @param to The destination GPU array.
      * @param fromArray The source CPU array.
      * @param toIndex The index in the destination array to start copying to.
@@ -84,9 +78,9 @@ public class DArray extends Array {
      * @throws IllegalArgumentException if any index is out of bounds or length
      * is negative.
      */
-    public static void copy(DArray to, double[] fromArray, int toIndex, int fromIndex, int length) {
+    public static void copy(Handle handle, DArray to, double[] fromArray, int toIndex, int fromIndex, int length) {
         checkNull(fromArray, to);
-        Array.copy(to, Pointer.to(fromArray), toIndex, fromIndex, length, PrimitiveType.DOUBLE);
+        Array.copy(handle, to, Pointer.to(fromArray), toIndex, fromIndex, length, PrimitiveType.DOUBLE);
     }
 
     /**
@@ -96,40 +90,44 @@ public class DArray extends Array {
      * @param toStart The index in the destination array to start copying to.
      * @param fromStart The index in this array to start copying from.
      * @param length The number of elements to copy.
+     * @param handle
      * @throws IllegalArgumentException if any index is out of bounds or length
      * is negative.
      */
-    public void get(double[] to, int toStart, int fromStart, int length) {
+    public void get(Handle handle, double[] to, int toStart, int fromStart, int length) {
         checkNull(to);
-        get(Pointer.to(to), toStart, fromStart, length);
+        get(handle, Pointer.to(to), toStart, fromStart, length);
     }
 
     /**
      * Exports a portion of this GPU array to a CPU array.
      *
+     * @param handle
      * @param fromStart The starting index in this GPU array.
      * @param length The number of elements to export.
      * @return A CPU array containing the exported portion.
      * @throws IllegalArgumentException if fromStart or length is out of bounds.
      */
-    public double[] get(int fromStart, int length) {
+    public double[] get(Handle handle, int fromStart, int length) {
         double[] export = new double[length];
-        get(export, 0, fromStart, length);
+        get(handle, export, 0, fromStart, length);
         return export;
     }
 
     /**
      * Exports the entire GPU array to a CPU array.
      *
+     * @param handle
      * @return A CPU array containing all elements of this GPU array.
      */
-    public double[] get() {
-        return get(0, length);
+    public double[] get(Handle handle) {
+        return get(handle, 0, length);
     }
 
     /**
      * Copies a CPU array to this GPU array.
      *
+     * @param handle
      * @param from The source CPU array.
      * @param toIndex The index in this GPU array to start copying to.
      * @param fromIndex The index in the source array to start copying from.
@@ -137,31 +135,32 @@ public class DArray extends Array {
      * @throws IllegalArgumentException if any index is out of bounds or size is
      * negative.
      */
-    public void set(double[] from, int toIndex, int fromIndex, int size) {
-        copy(this, from, toIndex, fromIndex, size);
+    public void set(Handle handle, double[] from, int toIndex, int fromIndex, int size) {
+        copy(handle, this, from, toIndex, fromIndex, size);
     }
 
     /**
      * Copies a CPU array to this GPU array.
      *
+     * @param handle
      * @param from The source CPU array.
      * @throws IllegalArgumentException if from is null.
      */
-    public final void set(double[] from) {
-        set(from, 0, 0, from.length);
+    public final void set(Handle handle, double[] from) {
+        set(handle, from, 0, 0, from.length);
     }
 
     /**
      * Copies a CPU array to this GPU array starting from a specified index.
      *
+     * @param handle
      * @param from The source CPU array.
      * @param toIndex The index in this GPU array to start copying to.
      * @throws IllegalArgumentException if from is null.
      */
-    public void set(double[] from, int toIndex) {
-        set(from, toIndex, 0, from.length);
+    public void set(Handle handle, double[] from, int toIndex) {
+        set(handle, from, toIndex, 0, from.length);
     }
-
 
     /**
      * A sub array of this array. Note, this is not a copy and changes to this
@@ -176,17 +175,30 @@ public class DArray extends Array {
         return new DArray(pointer(start), length);
     }
 
+    /**
+     * A sub array of this array. Note, this is not a copy and changes to this
+     * array will affect the sub array and vice versa. The length of the new
+     * array will go to the end of this array.
+     *
+     * @param start The beginning of the sub array.
+     * @return
+     */
+    public DArray subArray(int start) {
+        checkPos(start);
+        return new DArray(pointer(start), length - start);
+    }
 
     /**
      * Sets the value at the given index.
      *
+     * @param handle
      * @param index The index the new value is to be assigned to.
      * @param val The new value at the given index.
      */
-    public void set(int index, double val) {
+    public void set(Handle handle, int index, double val) {
         checkPos(index);
         checkAgainstLength(index);
-        set(new double[]{val}, index);
+        set(handle, new double[]{val}, index);
     }
 
     /**
@@ -196,7 +208,8 @@ public class DArray extends Array {
      * @return The value at index.
      */
     public DSingleton get(int index) {
-        checkPos(index); checkAgainstLength(index);
+        checkPos(index);
+        checkAgainstLength(index);
         return new DSingleton(this, index);
     }
 
@@ -227,14 +240,14 @@ public class DArray extends Array {
      * @param b Pointer to the matrix B on the GPU (can be null for
      * transposition). 0).
      * @param ldb This should be 0 if B is null.
-     * @param ldc ldc: Leading dimension of this matrix (ldc ≥ max(1, n)
-     * after transposition).
+     * @param ldc ldc: Leading dimension of this matrix (ldc ≥ max(1, n) after
+     * transposition).
      *
      * @return Status code from CUBLAS library: CUBLAS_STATUS_SUCCESS if the
      * operation was successful, or an appropriate error code otherwise.
      *
      */
-    public int MatrixAddWithTranspose(
+    public int matrixAddWithTranspose(
             Handle handle,
             boolean transA,
             boolean transB,
@@ -251,10 +264,10 @@ public class DArray extends Array {
         checkNull(handle, a, b);
         checkPos(heightA, widthA);
         checkLowerBound(heightA, lda, ldb, ldc);
-        a.checkAgainstLength(heightA * widthA);
-        b.checkAgainstLength(heightA * widthA);
-        checkAgainstLength(heightA * widthA);
-        
+        a.checkAgainstLength(heightA * widthA - 1);
+        b.checkAgainstLength(heightA * widthA - 1);
+        checkAgainstLength(heightA * widthA - 1);
+
         return JCublas2.cublasDgeam(
                 handle.get(),
                 transA ? cublasOperation.CUBLAS_OP_T : cublasOperation.CUBLAS_OP_N,
@@ -289,8 +302,8 @@ public class DArray extends Array {
         checkNull(handle, vecX, vecY);
         checkPos(rows, cols);
         checkLowerBound(1, incY, incX);
-        checkAgainstLength(rows*cols);
-        
+        checkAgainstLength(rows * cols);
+
         JCublas2.cublasDger(handle.get(), rows, cols, cpuPointer(multProd), vecX.pointer, incX, vecY.pointer, incY, pointer, rows);
     }
 
@@ -305,8 +318,22 @@ public class DArray extends Array {
      * @return The Euclidean norm of this vector.
      */
     public DSingleton norm(Handle handle) {
+        return norm(handle, new DSingleton());
+    }
+
+    /**
+     * Computes the Euclidean norm of the vector X (2-norm):
+     *
+     * <pre>
+     * result = sqrt(X[0]^2 + X[1]^2 + ... + X[n-1]^2)
+     * </pre>
+     *
+     * @param handle
+     * @param result where the result is to be stored.
+     * @return The Euclidean norm of this vector.
+     */
+    public DSingleton norm(Handle handle, DSingleton result) {
         checkNull(handle);
-        DSingleton result = new DSingleton();
         JCublas2.cublasDnrm2(handle.get(), length, pointer, 1, result.pointer);
         return result;
     }
@@ -342,7 +369,7 @@ public class DArray extends Array {
         checkPos(aRows, aCols);
         checkLowerBound(1, inc, incX);
         matA.checkAgainstLength(aRows * aCols);
-        
+
         JCublas2.cublasDgemv(
                 handle.get(),
                 transA ? 'T' : 'N',
@@ -362,7 +389,10 @@ public class DArray extends Array {
 
     @Override
     public String toString() {
-        return Arrays.toString(get());
+        try (Handle handle = new Handle()) {
+            return Arrays.toString(get(handle));
+        }
+
     }
 
     /**
@@ -373,19 +403,28 @@ public class DArray extends Array {
      * value. The matrix A is stored in column-major order, and the leading
      * dimension of A is specified by lda.
      *
+     * In contrast to the method that doesn't use a handle, this one
+     *
+     * @param handle A handle.
      * @param fill the scalar value to set all elements of A
      * @param inc The increment with which the method iterates over the array.
      * @return this;
      */
-    public DArray fillArray(double fill, int inc) {
-        checkLowerBound(1, inc);
-        super.fillArray(Pointer.to(new double[]{fill}), inc);
+    public DArray fillArray(Handle handle, double fill, int inc) {
+        checkPos(inc);
+        checkNull(handle);
+
+        addToMe(handle, -1, this, inc, inc);
+        try (DSingleton sing = new DSingleton(fill, handle)) {
+            addToMe(handle, 1, sing, 0, inc);
+        }
         return this;
     }
 
     /**
      * Fills a matrix with a value.
      *
+     * @param handle
      * @param height The height of the matrix.
      * @param width The width of the matrix.
      * @param lda The distance between the first element of each column of the
@@ -393,25 +432,34 @@ public class DArray extends Array {
      * @param fill The value the matrix is to be filled with.
      * @return this, after having been filled.
      */
-    public DArray fillMatrix(int height, int width, int lda, double fill) {
+    public DArray fillMatrix(Handle handle, int height, int width, int lda, double fill) {
         checkPos(height, width);
         checkLowerBound(height, lda);
-        checkAgainstLength(height * width);
-        
-        fillMatrix(height, width, lda, Pointer.to(new double[]{fill}));
+        checkAgainstLength(height * width - 1);
+
+        if (height == lda) return fillArray(handle, fill, 1);
+
+        try (DArray filler = DArray.empty(width * height).fillArray(handle, fill, 1)) {
+
+            addAndSet(handle, false, false, height, width, 1, filler, height, 0, this, lda, lda);
+        }
+
         return this;
     }
 
     public static void main(String[] args) {
-        DArray test = DArray.emptyArray(6);
-//        test.fillArray(0, 1);
-        test.fillMatrix(2, 2, 3, 4);
+        try (Handle handle = new Handle()) {
+            DArray test = DArray.empty(9);
 
-        System.out.println(test);
+            DArray a = DArray.empty(1);
+            DArray b = DArray.empty(9);
+
+            test.addAndSet(handle, false, false, 3, 3, 0, a, 3, 1, b, 3, 3);
+
+            System.out.println(test.toString());
+        }
     }
 
-    
-    
     /**
      * Computes the dot product of two vectors:
      *
@@ -428,16 +476,13 @@ public class DArray extends Array {
      * @return The dot product of X and Y.
      */
     public double dot(Handle handle, DArray x, int incX, int inc) {
-        checkNull(handle, x);
-        checkLowerBound(1, inc, incX);
-        checkUpperBound(length/inc, x.length/incX - 1);
-        
+        checkNull(handle, x);        
+
         double[] result = new double[1];
         JCublas2.cublasDdot(handle.get(), length, x.pointer, incX, pointer, inc, Pointer.to(result));
         return result[0];
     }
-    
-    
+
     /**
      * Performs the matrix-matrix multiplication using double precision (Dgemm)
      * on the GPU:
@@ -471,7 +516,7 @@ public class DArray extends Array {
      * 1 to add the product to the current array as is.
      * @param ldc @see ldb
      */
-    public void multMatMat(Handle handle, boolean transposeA, boolean transposeB, int aRows, 
+    public void multMatMat(Handle handle, boolean transposeA, boolean transposeB, int aRows,
             int bCols, int aCols, double timesAB, DArray a, int lda, DArray b, int ldb, double timesCurrent, int ldc) {
         checkNull(handle, a, b);
         checkPos(aRows, bCols, aCols, lda, ldb, ldc);
@@ -481,7 +526,7 @@ public class DArray extends Array {
         a.checkAgainstLength(aCols * lda - 1);
         b.checkAgainstLength(bCols * ldb - 1);
         checkAgainstLength(aRows * bCols - 1);
-        
+
         // Check the transpose options and set the corresponding CUBLAS operations.
         int transA = transposeA ? cublasOperation.CUBLAS_OP_T : cublasOperation.CUBLAS_OP_N;
         int transB = transposeB ? cublasOperation.CUBLAS_OP_T : cublasOperation.CUBLAS_OP_N;
@@ -526,9 +571,8 @@ public class DArray extends Array {
     public DArray addToMe(Handle handle, double timesX, DArray x, int incX, int inc) {
         checkNull(handle, x);
         checkLowerBound(1, inc);
-        checkUpperBound(length/inc, x.length/incX - 1);
 
-       JCublas2.cublasDaxpy(handle.get(), length, Pointer.to(new double[]{timesX}), x.pointer, incX, pointer, inc);
+        JCublas2.cublasDaxpy(handle.get(), length, Pointer.to(new double[]{timesX}), x.pointer, incX, pointer, inc);
         return this;
     }
 
@@ -564,16 +608,22 @@ public class DArray extends Array {
             int ldb, int ldc) {
         checkNull(handle, a, b);
         checkPos(height, width);
-        checkLowerBound(height, lda, ldb, ldc);
-        checkAgainstLength(height * width);
-        
-        JCublas2.cublasDgeam(handle.get(),
+        checkAgainstLength(height * width - 1);
+
+        JCublas2.cublasDgeam(
+                handle.get(),
                 transA ? cublasOperation.CUBLAS_OP_T : cublasOperation.CUBLAS_OP_N,
                 transB ? cublasOperation.CUBLAS_OP_T : cublasOperation.CUBLAS_OP_N,
-                height, width,
-                cpuPointer(alpha), a.pointer, lda,
-                cpuPointer(beta), b.pointer, ldb,
-                pointer, ldc);
+                height,
+                width,
+                cpuPointer(alpha),
+                a.pointer,
+                lda,
+                cpuPointer(beta),
+                b.pointer,
+                ldb,
+                pointer,
+                ldc);
 
         return this;
     }

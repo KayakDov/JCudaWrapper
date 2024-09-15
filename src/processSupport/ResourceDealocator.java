@@ -1,4 +1,4 @@
-package gpu;
+package processSupport;
 
 import java.lang.ref.Cleaner;
 import java.util.concurrent.Executors;
@@ -19,7 +19,7 @@ public class ResourceDealocator<T> implements Runnable {
      */
     public static final Cleaner cleaner = Cleaner.create(Executors.defaultThreadFactory());
 
-    private final T needsClosure;
+    private final T[] needsClosure;
     private final Consumer<T> close;
 
     /**
@@ -28,12 +28,13 @@ public class ResourceDealocator<T> implements Runnable {
      * @param <T> an object that needs to be cleaned.
      * @param obj An object containing a tool of Type T that needs to be cleaned 
      * when the object is no longer in use.
+     * @param needsClosure The thing that needs to be closed.
      * @param closeOperation The close operation.
      * @return A Cleanable that will clean up data when the object containing
      * that data is no longer accessible.
      */
-    public static <T> Cleaner.Cleanable register(Object obj, T needsClosure, Consumer<T> closeOperation) {
-        return cleaner.register(obj, new ResourceDealocator(needsClosure, closeOperation));
+    public static <T> Cleaner.Cleanable register(Object obj, Consumer<T> closeOperation, T... needsClosure) {
+        return cleaner.register(obj, new ResourceDealocator(closeOperation, needsClosure));
     }
 
     /**
@@ -42,7 +43,7 @@ public class ResourceDealocator<T> implements Runnable {
      * @param needsClosure The thing that needs to be cleaned from memory.
      * @param close The way in which it is to be cleaned.
      */
-    private ResourceDealocator(T needsClosure, Consumer<T> close) {
+    private ResourceDealocator(Consumer<T> close, T... needsClosure) {
         this.needsClosure = needsClosure;
         this.close = close;
     }
@@ -52,7 +53,8 @@ public class ResourceDealocator<T> implements Runnable {
     @Override
     public void run() {
         if (needsClosure != null && cleaned.compareAndSet(false, true)) {
-            close.accept(needsClosure);
+            for(T closeMe: needsClosure)
+            close.accept(closeMe);
 //            System.out.println("gpu.ResourceDealocator.run(): dealocated " + needsClosure.toString());
         }
     }

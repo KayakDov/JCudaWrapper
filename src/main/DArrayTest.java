@@ -1,7 +1,7 @@
 package main;
 
-import gpu.DArray;
-import gpu.Handle;
+import storage.DArray;
+import processSupport.Handle;
 import java.util.Arrays;
 import jcuda.runtime.JCuda;
 
@@ -175,7 +175,7 @@ public class DArrayTest {
         try {
             DArray a = new DArray(1, 2,   3, 4,   5, 6);  // A is 2x3
             DArray b = new DArray(7, 8, 9,   10, 11, 12); // B is 3x2
-            DArray c = DArray.emptyArray(4);           // C is 2x2
+            DArray c = DArray.empty(4);           // C is 2x2
 
             c.multMatMat(handle, false, false, 2, 2, 3, 1, a, 2, b, 3, 0, 2);
             double[] result = c.get();

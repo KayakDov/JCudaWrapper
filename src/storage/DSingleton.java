@@ -1,6 +1,7 @@
-package gpu;
+package storage;
 
 import jcuda.Pointer;
+import processSupport.Handle;
 
 /**
  * S ingle element in the gpu.
@@ -10,6 +11,8 @@ public class DSingleton extends DArray{
     
     /**
      * Creates a singleton by taking an element from another array.
+     * Note, this is copy by reference, so changes to this singleton will
+     * effect the original array.
      * @param from The array the singleton is to be taken from.
      * @param index The index in the array.
      */
@@ -21,21 +24,26 @@ public class DSingleton extends DArray{
      * Creates a singleton with no assigned value.
      */
     public DSingleton(){
-        super(empty(1), 1);
+        super(Array.empty(1, PrimitiveType.DOUBLE), 1);
     }
     /**
      * Creates a singleton from a cpu element.
      * @param d The element in the singleton.
      */
-    public DSingleton(double d){
-        super(d);
+    public DSingleton(double d, Handle hand){
+        super(hand, d);
     }
     
-    public static void main(String[] args) {
-        DSingleton a = new DSingleton(5);
-        
-        System.out.println(a.toString());
-    }
-    
+    /**
+     * Gets the value in this.
+     * @return The value in this singleton.
+     */
+    public double getVal(){
+        double[] get;
+        try(Handle hand = new Handle()){
+             get = get(hand);
+        }
+        return get[0];
+    }    
     
 }
