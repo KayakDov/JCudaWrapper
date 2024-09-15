@@ -13,7 +13,7 @@ import storage.DSingleton;
  * Represents a matrix stored on the GPU. For more information on jcuda
  * http://www.jcuda.org/jcuda/jcublas/JCublas.html
  */
-public class Matrix extends AbstractRealMatrix {
+public class Matrix extends AbstractRealMatrix implements AutoCloseable{
 
     /**
      * The number of rows in the matrix.
@@ -152,7 +152,11 @@ public class Matrix extends AbstractRealMatrix {
      */
     @Override
     public Matrix multiply(RealMatrix m) throws DimensionMismatchException {
-        return multiply(new Matrix(m, handle));
+        
+        Matrix mat = new Matrix(m, handle);
+        Matrix result = multiply(mat);
+        mat.close(true, false);
+        return result;
     }
 
     /**
@@ -252,7 +256,10 @@ public class Matrix extends AbstractRealMatrix {
      */
     @Override
     public Matrix add(RealMatrix m) throws MatrixDimensionMismatchException {
-        return add(new Matrix(m, handle));
+        Matrix mat = new Matrix(m, handle);
+        Matrix add = add(mat);
+        mat.close(true, false);
+        return add;
     }
 
     /**
@@ -314,7 +321,11 @@ public class Matrix extends AbstractRealMatrix {
     public Matrix subtract(RealMatrix m) throws MatrixDimensionMismatchException {
         if (m.getRowDimension() != getRowDimension() || m.getColumnDimension() != getColumnDimension())
             throw new MatrixDimensionMismatchException(m.getRowDimension(), m.getColumnDimension(), getRowDimension(), getColumnDimension());
-        return subtract(new Matrix(m, handle));
+        
+        Matrix mat = new Matrix(m, handle);
+        Matrix result = subtract(mat);
+        mat.close(true, false);
+        return result;
     }
 
     /**
@@ -1368,15 +1379,10 @@ public class Matrix extends AbstractRealMatrix {
 
     /**
      * Frees resources.
-     *
-     * @param freeData true if no other methods are using the same data. false
-     * if data is shared.
-     * @param freeHandle True if no other methods are using the same handle,
-     * false if the handle is shared.
      */
-    public void close(boolean freeData, boolean freeHandle) {
-        if (freeData) data.close();
-        if (freeHandle) handle.close();
+    @Override
+    public void close() {
+        data.close();
     }
 
 }
