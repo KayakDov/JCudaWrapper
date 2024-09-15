@@ -155,7 +155,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable{
         
         Matrix mat = new Matrix(m, handle);
         Matrix result = multiply(mat);
-        mat.close(true, false);
+        mat.close();
         return result;
     }
 
@@ -258,7 +258,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable{
     public Matrix add(RealMatrix m) throws MatrixDimensionMismatchException {
         Matrix mat = new Matrix(m, handle);
         Matrix add = add(mat);
-        mat.close(true, false);
+        mat.close();
         return add;
     }
 
@@ -324,7 +324,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable{
         
         Matrix mat = new Matrix(m, handle);
         Matrix result = subtract(mat);
-        mat.close(true, false);
+        mat.close();
         return result;
     }
 
@@ -781,7 +781,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable{
         Matrix rowMatrix = getRowMatrix(row);
         Matrix rowCopy = rowMatrix.copy();
         double[] rowData = rowCopy.data.get(handle);
-        rowCopy.close(true, false);
+        rowCopy.close();
         return rowData;
 
     }
@@ -912,10 +912,10 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable{
 
         Matrix vec = fromColVec(v, handle);
         Matrix result = multiply(vec);
-        vec.close(true, false);
+        vec.close();
 
         double[] operate = result.data.get(handle);
-        result.close(true, false);
+        result.close();
 
         return operate;
     }
