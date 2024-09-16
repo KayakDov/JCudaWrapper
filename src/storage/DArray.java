@@ -3,14 +3,20 @@ package storage;
 import processSupport.Handle;
 import java.util.Arrays;
 import jcuda.Pointer;
+import jcuda.Sizeof;
 import jcuda.driver.CUdeviceptr;
 import jcuda.jcublas.JCublas2;
+import jcuda.jcublas.cublasDiagType;
+import jcuda.jcublas.cublasFillMode;
 import jcuda.jcublas.cublasOperation;
 import jcuda.runtime.cudaStream_t;
 
 /**
  * This class provides functionalities to create and manipulate double arrays on
  * the GPU.
+ *
+ * For more methods that might be useful here, see:
+ * https://docs.nvidia.com/cuda/cublas/index.html#cublas-level-1-function-reference
  *
  * TODO: create arrays other than double.
  *
@@ -65,11 +71,10 @@ public class DArray extends Array {
         return new DArray(Array.empty(size, PrimitiveType.DOUBLE), size);
     }
 
-
     /**
      * Copies contents from a CPU array to a GPU array.
      *
-     * @param handle
+     * @param handle handle to the cuBLAS library context.
      * @param to The destination GPU array.
      * @param fromArray The source CPU array.
      * @param toIndex The index in the destination array to start copying to.
@@ -102,7 +107,7 @@ public class DArray extends Array {
     /**
      * Exports a portion of this GPU array to a CPU array.
      *
-     * @param handle
+     * @param handle handle to the cuBLAS library context.
      * @param fromStart The starting index in this GPU array.
      * @param length The number of elements to export.
      * @return A CPU array containing the exported portion.
@@ -117,7 +122,7 @@ public class DArray extends Array {
     /**
      * Exports the entire GPU array to a CPU array.
      *
-     * @param handle
+     * @param handle handle to the cuBLAS library context.
      * @return A CPU array containing all elements of this GPU array.
      */
     public double[] get(Handle handle) {
@@ -125,9 +130,45 @@ public class DArray extends Array {
     }
 
     /**
+     * Copies from this vector to another with increments.
+     *
+     * @param handle handle to the cuBLAS library context.
+     * @param to The array to copy to.
+     * @param toStart The index to start copying to.
+     * @param toInc stride between consecutive elements of the array copied to.
+     * @param fromStart The index to start copying from.
+     * @param fromInc stride between consecutive elements of this array.
+     */
+    public void get(Handle handle, DArray to, int toStart, int fromStart, int toInc, int fromInc) {
+
+        JCublas2.cublasDcopy(handle.get(),
+                to.length / toInc,
+                pointer.withByteOffset(fromStart*Sizeof.DOUBLE),
+                fromInc,
+                to.pointer.withByteOffset(toStart*Sizeof.DOUBLE),
+                toInc
+        );
+    }
+
+    /**
+     * Copies from to vector from another with increments.
+     *
+     * @param handle handle to the cuBLAS library context.
+     * @param from The array to copy from.
+     * @param fromStart The index to begin copying from.
+     * @param toInc stride between consecutive elements of the array copied to.
+     * @param toStart The index to begin copying to.
+     * @param fromInc stride between consecutive elements of this array.
+     */
+    public void set(Handle handle, DArray from, int toStart, int fromStart, int toInc, int fromInc) {
+
+        from.get(handle, this, toStart, fromStart, toInc, fromInc);
+    }
+
+    /**
      * Copies a CPU array to this GPU array.
      *
-     * @param handle
+     * @param handle handle to the cuBLAS library context.
      * @param from The source CPU array.
      * @param toIndex The index in this GPU array to start copying to.
      * @param fromIndex The index in the source array to start copying from.
@@ -142,7 +183,7 @@ public class DArray extends Array {
     /**
      * Copies a CPU array to this GPU array.
      *
-     * @param handle
+     * @param handle handle to the cuBLAS library context.
      * @param from The source CPU array.
      * @throws IllegalArgumentException if from is null.
      */
@@ -191,7 +232,7 @@ public class DArray extends Array {
     /**
      * Sets the value at the given index.
      *
-     * @param handle
+     * @param handle handle to the cuBLAS library context.
      * @param index The index the new value is to be assigned to.
      * @param val The new value at the given index.
      */
@@ -287,7 +328,7 @@ public class DArray extends Array {
      *
      * Where X is a column vector and Y^T is a row vector.
      *
-     * @param handle
+     * @param handle handle to the cuBLAS library context.
      * @param rows The number of rows in this matrix.
      * @param cols The number of columns in this matrix.
      * @param multProd Scalar applied to the outer product of X and Y^T.
@@ -314,7 +355,7 @@ public class DArray extends Array {
      * result = sqrt(X[0]^2 + X[1]^2 + ... + X[n-1]^2)
      * </pre>
      *
-     * @param handle
+     * @param handle handle to the cuBLAS library context.
      * @return The Euclidean norm of this vector.
      */
     public DSingleton norm(Handle handle) {
@@ -328,7 +369,7 @@ public class DArray extends Array {
      * result = sqrt(X[0]^2 + X[1]^2 + ... + X[n-1]^2)
      * </pre>
      *
-     * @param handle
+     * @param handle handle to the cuBLAS library context.
      * @param result where the result is to be stored.
      * @return The Euclidean norm of this vector.
      */
@@ -347,13 +388,14 @@ public class DArray extends Array {
      *
      * Where op(A) can be A or its transpose.
      *
-     * @param handle
-     * @param transA Specifies whether matrix A is transposed ('N' for no
-     * transpose, 'T' for transpose).
+     * @param handle handle to the cuBLAS library context.
+     * @param transA Specifies whether matrix A is transposed (true for
+     * transpose and false for not.)
      * @param aRows The number of rows in matrix A.
      * @param aCols The number of columns in matrix A.
      * @param timesAx Scalar multiplier applied to the matrix-vector product.
      * @param matA Pointer to matrix A in GPU memory.
+     * @param lda The distance between the first element of each column of A.
      * @param vecX Pointer to vector X in GPU memory.
      * @param incX The increments taken when iterating over elements of X. This
      * is usually1 1. If you set it to 2 then you'll be looking at half the
@@ -364,7 +406,7 @@ public class DArray extends Array {
      * array.
      * @return this array after this = timesAx * op(A) * X + beta*this
      */
-    public DArray multMatVec(Handle handle, boolean transA, int aRows, int aCols, double timesAx, DArray matA, DArray vecX, int incX, double beta, int inc) {
+    public DArray multMatVec(Handle handle, boolean transA, int aRows, int aCols, double timesAx, DArray matA, int lda, DArray vecX, int incX, double beta, int inc) {
         checkNull(handle, matA, vecX);
         checkPos(aRows, aCols);
         checkLowerBound(1, inc, incX);
@@ -377,7 +419,7 @@ public class DArray extends Array {
                 aCols,
                 cpuPointer(timesAx),
                 matA.pointer,
-                aRows,
+                lda,
                 vecX.pointer,
                 incX,
                 cpuPointer(beta),
@@ -387,12 +429,223 @@ public class DArray extends Array {
         return this;
     }
 
+    /**
+     * Multiplies this vector by a banded matrix and adds the result to the
+     * vector.
+     *
+     * this = timesAx * op(A) * X + timesThis * this
+     *
+     * A banded matrix is a sparse matrix where the non-zero elements are
+     * confined to a diagonal band, comprising the main diagonal, a fixed number
+     * of subdiagonals below the main diagonal, and a fixed number of
+     * superdiagonals above the main diagonal. Banded matrices are often used to
+     * save space, as only the elements within the band are stored, and the rest
+     * are implicitly zero.
+     *
+     * In this method, the banded matrix is represented by the {@link DArray} M,
+     * and the structure of M is defined by the number of subdiagonals and
+     * superdiagonals. The matrix is stored in a column-major order, with each
+     * column being a segment of the band. The parameter `lda` indicates the
+     * leading dimension of the banded matrix, which corresponds to the number
+     * of rows in the compacted matrix representation. The elements of the band
+     * are stored contiguously in memory, with zero-padding where necessary to
+     * fill out the bandwidth of the matrix.
+     *
+     * Let M represent the column-major matrix that stores the elements of A in
+     * a {@link DArray}. The first row of M corresponds to the top-rightmost
+     * non-zero diagonal of A (the highest superdiagonal). The second row
+     * corresponds to the diagonal that is one position below/left of the first
+     * row, and so on, proceeding down the diagonals. The final row of M
+     * contains the bottom-leftmost diagonal of A (the lowest subdiagonal).
+     * Diagonals that do not fully extend across A are padded with zeros in M.
+     * An element in A has the same column in M as it does in A.
+     *
+     * This method performs the matrix-vector multiplication between the banded
+     * matrix A and the vector x using the JCublas `cublasDgbmv` function, which
+     * supports operations on banded matrices. The result is scaled by `timesA`
+     * and added to this vector scaled by `timesThis`.
+     *
+     * @param handle The JCublas handle required for GPU operations.
+     * @param transposeA Whether to transpose matrix A before multiplying.
+     * @param rowsA The number of rows in matrix A.
+     * @param colsA The number of columns in matrix A.
+     * @param subDiagonalsA The number of subdiagonals in matrix A.
+     * @param superDiagonalA The number of superdiagonals in matrix A.
+     * @param timesA Scalar multiplier for the matrix-vector product.
+     * @param Ma A compact form {@link DArray} representing the banded matrix A.
+     * @param ldm The leading dimension of the banded matrix, which defines the
+     * row count in the compacted banded matrix representation.
+     * @param x The {@link DArray} representing the input vector to be
+     * multiplied.
+     * @param incX The stride for stepping through the elements of x.
+     * @param timesThis Scalar multiplier for this vector, to which the result
+     * of the matrix-vector multiplication is added.
+     * @param inc The stride for stepping through the elements of this vector.
+     * @return The updated vector (this), after the matrix-vector multiplication
+     * and addition.
+     */
+    public DArray multBandMatVec(Handle handle, boolean transposeA, int rowsA, int colsA, int subDiagonalsA, int superDiagonalA, double timesA, DArray Ma, int ldm, DArray x, int incX, double timesThis, int inc) {
+        JCublas2.cublasDgbmv(
+                handle.get(),
+                transposeA ? cublasOperation.CUBLAS_OP_T : cublasOperation.CUBLAS_OP_N,
+                rowsA,
+                colsA,
+                subDiagonalsA,
+                superDiagonalA,
+                cpuPointer(timesA),
+                Ma.pointer,
+                ldm,
+                x.pointer,
+                incX,
+                cpuPointer(timesThis),
+                pointer,
+                inc);
+
+        return this;
+    }
+
+    /**
+     * Solves the system of linear equations Ax = b, where A is a triangular
+     * banded matrix, and x is the solution vector.
+     * 
+     * b is this when the algorithm begins, and x is this when the algorithm ends.
+     * That is to say the solution to Ax = this is stored in this.
+     *
+     * A triangular banded matrix is a special type of sparse matrix where the
+     * non-zero elements are confined to a diagonal band around the main
+     * diagonal and only the elements above (or below) the diagonal are stored,
+     * depending on whether the matrix is upper or lower triangular.
+     *
+     * The matrix is stored in a compact banded format, where only the diagonals
+     * of interest are represented to save space. For a lower diagonal matrix,
+     * the first row represents the main diagonal, and subsequent rows represent 
+     * the diagonals progressively further from the main diagonal.  An upper 
+     * diagonal matrix is stored with the last row as the main diagonal and the
+     * first row as the furthest diagonal from the main.
+     *
+     * This method uses JCublas `cublasDtbsv` function to solve the system of
+     * equations for the vector x.
+     *
+     * @param handle The JCublas handle required for GPU operations.
+     * @param isUpper Indicates whether the matrix A is upper or lower triangular.
+     * Use {@code cublasFillMode.CUBLAS_FILL_MODE_UPPER} for upper triangular,
+     * or {@code cublasFillMode.CUBLAS_FILL_MODE_LOWER} for lower triangular.
+     * @param transposeA Whether to transpose the matrix A before solving the
+     * system. Use {@code cublasOperation.CUBLAS_OP_T} for transpose, or
+     * {@code cublasOperation.CUBLAS_OP_N} for no transpose.
+     * @param onesOnDiagonal Specifies whether the matrix A is unit triangular
+     * ({@code cublasDiagType.CUBLAS_DIAG_UNIT}) or non-unit triangular
+     * ({@code cublasDiagType.CUBLAS_DIAG_NON_UNIT}).
+     * @param rowsA The number of rows/columns of the matrix A (the order of the
+     * matrix).
+     * @param nonPrimaryDiagonals The number of subdiagonals or superdiagonals in the triangular
+     * banded matrix.
+     * @param Ma A compact form {@link DArray} representing the triangular banded
+     * matrix A.
+     * @param ldm The leading dimension of the banded matrix, which defines the
+     * row count in the compacted matrix representation.
+     
+     * @param inc The stride for stepping through the elements of b.
+     * @return The updated {@link DArray} (b), now containing the solution
+     * vector x.
+     */
+    public DArray solveTriangularBandedSystem(Handle handle, boolean isUpper, boolean transposeA, boolean onesOnDiagonal, int rowsA, int nonPrimaryDiagonals, DArray Ma, int ldm, int inc) {
+        // Call the cublasDtbsv function to solve the system
+        JCublas2.cublasDtbsv(
+                handle.get(),
+                isUpper?cublasFillMode.CUBLAS_FILL_MODE_UPPER:cublasFillMode.CUBLAS_FILL_MODE_LOWER, // Upper or lower triangular matrix
+                transposeA?cublasOperation.CUBLAS_OP_T:cublasOperation.CUBLAS_OP_N, // Whether to transpose A
+                onesOnDiagonal?cublasDiagType.CUBLAS_DIAG_UNIT:cublasDiagType.CUBLAS_DIAG_NON_UNIT, // Whether A is unit or non-unit triangular
+                rowsA, // Number of rows/columns in A
+                nonPrimaryDiagonals, // Number of subdiagonals/superdiagonals
+                Ma.pointer, // Pointer to the compact form of matrix A
+                ldm, // Leading dimension of Ma
+                pointer, // Pointer to the right-hand side vector (b)
+                inc);          // Stride through the elements of b
+
+        return this;  // The result (solution vector x) is stored in b
+    }
+    
+    
+
     @Override
     public String toString() {
         try (Handle handle = new Handle()) {
             return Arrays.toString(get(handle));
         }
 
+    }
+
+    /**
+     * Multiplies this vector by a symmetric banded matrix and adds the result
+     * to the vector.
+     *
+     * this = timesA * A * x + timesThis * this
+     *
+     * A symmetric banded matrix is a matrix where the non-zero elements are
+     * confined to a diagonal band around the main diagonal, and the matrix is
+     * symmetric (i.e., A[i][j] = A[j][i]). In a symmetric banded matrix, only
+     * the elements within the band are stored, as the symmetry allows the upper
+     * or lower part to be inferred. This storage technique reduces memory
+     * usage.
+     *
+     * In this method, the symmetric banded matrix is represented by the A
+     * stored in Ma, where only the upper (or lower) part of the matrix is
+     * stored. The matrix is stored in a compact form, with each column being a
+     * segment of the band. The parameter `ldm` indicates the leading dimension
+     * of the matrix, which corresponds to the number of rows in the compacted
+     * matrix representation. Only the non-zero diagonals of the matrix are
+     * stored contiguously in memory.
+     *
+     * Let M represent the column-major matrix that stores the elements of the
+     * symmetric banded matrix A in a {@link DArray}. The first row of M
+     * corresponds to the main diagonal of A, and the subsequent rows correspond
+     * to diagonals above or below the main diagonal. For instance, the second
+     * row corresponds to the diagonal directly above the main diagonal, and so
+     * on.
+     *
+     * This method performs the matrix-vector multiplication between the
+     * symmetric banded matrix A and the vector x using the JCublas
+     * `cublasDsbmv` function, which supports operations on symmetric banded
+     * matrices. The result is scaled by `timesA` and added to this vector
+     * scaled by `timesThis`.
+     *
+     * @param handle The JCublas handle required for GPU operations.
+     * @param upper Whether the upper triangular part of the matrix is stored.
+     * @param colA The order of the symmetric matrix A (number of rows and
+     * columns).
+     * @param diagonals The number of subdiagonals or superdiagonals in the
+     * matrix.
+     * @param timesA Scalar multiplier for the matrix-vector product.
+     * @param Ma A compact form {@link DArray} representing the symmetric banded
+     * matrix A.
+     * @param ldm The leading dimension of the matrix, defining the row count in
+     * the compacted matrix representation.
+     * @param x The {@link DArray} representing the input vector to be
+     * multiplied.
+     * @param incX The stride for stepping through the elements of x.
+     * @param timesThis Scalar multiplier for this vector, to which the result
+     * of the matrix-vector multiplication is added.
+     * @param inc The stride for stepping through the elements of this vector.
+     * @return The updated vector (this), after the matrix-vector multiplication
+     * and addition.
+     */
+    public DArray multSymBandMatVec(Handle handle, boolean upper, int colA, int diagonals, double timesA, DArray Ma, int ldm, DArray x, int incX, double timesThis, int inc) {
+        JCublas2.cublasDsbmv(
+                handle.get(),
+                upper ? cublasFillMode.CUBLAS_FILL_MODE_UPPER : cublasFillMode.CUBLAS_FILL_MODE_LOWER,
+                colA,
+                diagonals,
+                cpuPointer(timesA),
+                Ma.pointer,
+                ldm,
+                x.pointer,
+                incX,
+                cpuPointer(timesThis),
+                pointer,
+                inc);
+
+        return this;
     }
 
     /**
@@ -410,21 +663,19 @@ public class DArray extends Array {
      * @param inc The increment with which the method iterates over the array.
      * @return this;
      */
-    public DArray fillArray(Handle handle, double fill, int inc) {
+    public DArray fill(Handle handle, double fill, int inc) {
         checkPos(inc);
         checkNull(handle);
 
-        addToMe(handle, -1, this, inc, inc);
-        try (DSingleton sing = new DSingleton(fill, handle)) {
-            addToMe(handle, 1, sing, 0, inc);
-        }
+        DSingleton from = new DSingleton(fill, handle);
+        set(handle, from, 0, 0, inc, 0);
         return this;
     }
 
     /**
      * Fills a matrix with a value.
      *
-     * @param handle
+     * @param handle handle to the cuBLAS library context.
      * @param height The height of the matrix.
      * @param width The width of the matrix.
      * @param lda The distance between the first element of each column of the
@@ -437,9 +688,9 @@ public class DArray extends Array {
         checkLowerBound(height, lda);
         checkAgainstLength(height * width - 1);
 
-        if (height == lda) return fillArray(handle, fill, 1);
+        if (height == lda) return fill(handle, fill, 1);
 
-        try (DArray filler = DArray.empty(width * height).fillArray(handle, fill, 1)) {
+        try (DArray filler = DArray.empty(width * height).fill(handle, fill, 1)) {
 
             addAndSet(handle, false, false, height, width, 1, filler, height, 0, this, lda, lda);
         }
@@ -467,7 +718,7 @@ public class DArray extends Array {
      * result = X[0] * Y[0] + X[1] * Y[1] + ... + X[n-1] * Y[n-1]
      * </pre>
      *
-     * @param handle
+     * @param handle handle to the cuBLAS library context.
      * @param incX The number of spaces to jump when incrementing forward
      * through x.
      * @param inc The number of spaces to jump when incrementing forward through
@@ -476,7 +727,7 @@ public class DArray extends Array {
      * @return The dot product of X and Y.
      */
     public double dot(Handle handle, DArray x, int incX, int inc) {
-        checkNull(handle, x);        
+        checkNull(handle, x);
 
         double[] result = new double[1];
         JCublas2.cublasDdot(handle.get(), length, x.pointer, incX, pointer, inc, Pointer.to(result));
@@ -559,7 +810,7 @@ public class DArray extends Array {
      *
      * This operation scales vector X by alpha and adds it to vector Y.
      *
-     * @param handle
+     * @param handle handle to the cuBLAS library context.
      * @param timesX Scalar used to scale vector X.
      * @param x Pointer to vector X in GPU memory.
      * @param incX The number of elements to jump when iterating forward through
@@ -635,7 +886,7 @@ public class DArray extends Array {
      * this = mult * this
      * </pre>
      *
-     * @param handle
+     * @param handle handle to the cuBLAS library context.
      * @param mult Scalar multiplier applied to vector X.
      * @param inc The number of elements to jump when iterating forward through
      * this array.
@@ -646,9 +897,10 @@ public class DArray extends Array {
     public DArray multMe(Handle handle, double mult, int inc) {
         checkNull(handle);
         checkLowerBound(1, inc);
-        JCublas2.cublasDscal(handle.get(), length, Pointer.to(new double[]{mult}), pointer, inc);
+        JCublas2.cublasDscal(handle.get(), length / inc, Pointer.to(new double[]{mult}), pointer, inc);
         return this;
     }
+
 }
 
 //    //TODO: use cuSolver for sovling equations and eigan values and vectors

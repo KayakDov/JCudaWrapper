@@ -11,9 +11,13 @@ import storage.DSingleton;
 
 /**
  * Represents a matrix stored on the GPU. For more information on jcuda
+ * 
+ * TODO: implement extensions of this class to include banded, symmetric banded,
+ * triangular packed, symmetric matrices.
+ * 
  * http://www.jcuda.org/jcuda/jcublas/JCublas.html
  */
-public class Matrix extends AbstractRealMatrix implements AutoCloseable{
+public class Matrix extends AbstractRealMatrix implements AutoCloseable {
 
     /**
      * The number of rows in the matrix.
@@ -152,11 +156,11 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable{
      */
     @Override
     public Matrix multiply(RealMatrix m) throws DimensionMismatchException {
-        
-        Matrix mat = new Matrix(m, handle);
-        Matrix result = multiply(mat);
-        mat.close();
-        return result;
+
+        try (Matrix mat = new Matrix(m, handle)) {
+            Matrix result = multiply(mat);
+            return result;
+        }
     }
 
     /**
@@ -321,7 +325,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable{
     public Matrix subtract(RealMatrix m) throws MatrixDimensionMismatchException {
         if (m.getRowDimension() != getRowDimension() || m.getColumnDimension() != getColumnDimension())
             throw new MatrixDimensionMismatchException(m.getRowDimension(), m.getColumnDimension(), getRowDimension(), getColumnDimension());
-        
+
         Matrix mat = new Matrix(m, handle);
         Matrix result = subtract(mat);
         mat.close();
@@ -794,9 +798,9 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable{
      * @throws OutOfRangeException if the row index is out of bounds.
      */
     @Override
-    public RealVector getRowVector(int row) throws OutOfRangeException {//TODO: create a GPU vector class.
+    public Vector getRowVector(int row) throws OutOfRangeException {//TODO: create a GPU vector class.
 
-        return new ArrayRealVector(getRow(row));
+        return new Vector(data.subArray(row), colDist, handle);
     }
 
     /**
@@ -842,8 +846,8 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable{
      * @throws OutOfRangeException if the column index is out of bounds.
      */
     @Override
-    public RealVector getColumnVector(int column) throws OutOfRangeException {
-        return new ArrayRealVector(getColumn(column));
+    public Vector getColumnVector(int column) throws OutOfRangeException {
+        return new Vector(data.subArray(index(0, column), height), 1, handle);
     }
 
     /**
@@ -930,14 +934,32 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable{
      * the number of columns.
      */
     @Override
-    public RealVector operate(RealVector v) throws DimensionMismatchException {
-        return new ArrayRealVector(operate(v.toArray()));
+    public Vector operate(RealVector v) throws DimensionMismatchException {
+        try(Vector temp = new Vector(v.toArray(), handle)){
+            return operate(temp);
+        }
+    }
+    
+    /**
+     * Multiplies this matrix by a RealVector and returns the resulting
+     * RealVector.
+     *
+     * @param v the vector to be multiplied.
+     * @return the resulting RealVector.
+     * @throws DimensionMismatchException if the vector length does not match
+     * the number of columns.
+     */
+    public Vector operate(Vector v) throws DimensionMismatchException {
+        Vector result = new Vector(height, handle);
+        result.data.multMatVec(handle, false, height, width, 1, data, colDist, v.data, v.inc, 1, 1);
+        return result;
     }
 
     /**
      * The identity Matrix.
      *
      * @param n the height and width of the matrix.
+     * @param hand
      * @return The identity matrix.
      */
     public static Matrix identity(int n, Handle hand) {
@@ -954,7 +976,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable{
      * Returns the matrix raised to the power of p. This operation only applies
      * to square matrices.
      *
-     * @param p the exponent to which the matrix is raised.
+     * @param p the positive exponent to which the matrix is raised.
      * @return the resulting matrix.
      * @throws NotPositiveException if the exponent is negative.
      * @throws NonSquareMatrixException if the matrix is not square.
@@ -1037,6 +1059,21 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable{
     public void setColumnVector(int column, RealVector vector) throws OutOfRangeException, MatrixDimensionMismatchException {
         setColumn(column, vector.toArray());
     }
+    
+    
+    /**
+     * Sets the specified column of the matrix to the values in the given
+     * RealVector.
+     *
+     * @param column the column index.
+     * @param vector the RealVector to set as the column.
+     * @throws OutOfRangeException if the column index is out of bounds.
+     * @throws MatrixDimensionMismatchException if the vector length does not
+     * match the number of rows.
+     */
+    public void setColumnVector(int column, Vector vector) throws OutOfRangeException, MatrixDimensionMismatchException {
+        data.set(handle, vector.data, index(0, column), 0, 0, vector.inc);
+    }
 
     /**
      * Sets the specified row of the matrix to the values in the given array.
@@ -1053,8 +1090,9 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable{
         if (array.length != width)
             throw new MatrixDimensionMismatchException(array.length, 0, width, 0);
 
-        for (int i = 0; i < array.length; i++)
-            data.set(handle, array, index(row, i), i, 1);
+        try(Vector temp = new Vector(array, handle)){
+            setRowVector(row, temp);
+        }
     }
 
     /**
@@ -1096,6 +1134,19 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable{
     @Override
     public void setRowVector(int row, RealVector vector) throws OutOfRangeException, MatrixDimensionMismatchException {
         setRow(row, vector.toArray());
+    }
+    
+    /**
+     * Sets the row of the matrix using data from a RealVector object.
+     *
+     * @param row the index of the row to set
+     * @param vector the RealVector object containing the data for the row
+     * @throws OutOfRangeException if the row index is out of range
+     * @throws MatrixDimensionMismatchException if the row length does not match
+     * the matrix width
+     */
+    public void setRowVector(int row, Vector vector) throws OutOfRangeException, MatrixDimensionMismatchException {
+        data.set(handle, vector.data, index(row, 0), 0, colDist, vector.inc);
     }
 
     /**
@@ -1382,7 +1433,10 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable{
      */
     @Override
     public void close() {
+        if(colDist != height) throw new IllegalAccessError("You are cleaning data from a sub Matrix");
         data.close();
     }
 
+    
+    
 }

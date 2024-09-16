@@ -7,10 +7,12 @@ import jcuda.runtime.JCuda;
 
 public class DArrayTest {
 
+    static Handle handle = new Handle();
+    
     public static void main(String[] args) throws Exception {
 
         // Initialize the GPU handle for all operations
-        Handle handle = new Handle();
+        
 
         // Run tests
         boolean allTestsPassed = true;
@@ -50,9 +52,9 @@ public class DArrayTest {
         
             double[] values = {1.0, 2.0, 3.0, 4.0, 5.0};
             
-            DArray dArray = new DArray(values);
+            DArray dArray = new DArray(handle, values);
             
-            double[] result = dArray.get();
+            double[] result = dArray.get(handle);
             
             boolean passed = arraysEqual(result, values, 1e-9);
             
@@ -73,10 +75,10 @@ public class DArrayTest {
             double[] initialValues = {1.0, 2.0, 3.0, 4.0, 5.0};
             double[] result;
             
-            try (DArray dArray = new DArray(initialValues)) {
+            try (DArray dArray = new DArray(handle, initialValues)) {
                 double[] newValues = {6.0, 7.0, 8.0};
-                dArray.set(newValues, 2);
-                result = dArray.get();
+                dArray.set(handle, newValues, 2);
+                result = dArray.get(handle);
             }
 
             double[] expected = {1.0, 2.0, 6.0, 7.0, 8.0};
@@ -93,10 +95,10 @@ public class DArrayTest {
         System.out.println("Testing DArray copy()...");
         try {
             double[] values = {1.0, 2.0, 3.0, 4.0, 5.0};
-            DArray dArray = new DArray(values);
+            DArray dArray = new DArray(handle, values);
 
-            DArray dArrayCopy = dArray.copy();
-            double[] result = dArrayCopy.get();
+            DArray dArrayCopy = dArray.copy(handle);
+            double[] result = dArrayCopy.get(handle);
             dArray.close();
             dArrayCopy.close();
 
@@ -113,8 +115,8 @@ public class DArrayTest {
     private static boolean testDotProduct(Handle handle) {
         System.out.println("Testing DArray dot() method...");
         try {
-            DArray dArray1 = new DArray(1.0, 2.0, 3.0, 4.0, 5.0);
-            DArray dArray2 = new DArray(5.0, 4.0, 3.0, 2.0, 1.0);
+            DArray dArray1 = new DArray(handle, 1.0, 2.0, 3.0, 4.0, 5.0);
+            DArray dArray2 = new DArray(handle, 5.0, 4.0, 3.0, 2.0, 1.0);
 
             double dotProduct = dArray1.dot(handle, dArray2, 1, 1);
             dArray1.close();
@@ -133,11 +135,11 @@ public class DArrayTest {
     private static boolean testAddToMe(Handle handle) {
         System.out.println("Testing DArray addToMe() method...");
         try {
-            DArray dArray1 = new DArray(1.0, 2.0, 3.0, 4.0, 5.0);
-            DArray dArray2 = new DArray(5.0, 4.0, 3.0, 2.0, 1.0);
+            DArray dArray1 = new DArray(handle, 1.0, 2.0, 3.0, 4.0, 5.0);
+            DArray dArray2 = new DArray(handle, 5.0, 4.0, 3.0, 2.0, 1.0);
 
             dArray1.addToMe(handle, 1.0, dArray2, 1, 1);
-            double[] result = dArray1.get();
+            double[] result = dArray1.get(handle);
             dArray1.close();
             dArray2.close();
 
@@ -154,10 +156,10 @@ public class DArrayTest {
     private static boolean testMultMe(Handle handle) {
         System.out.println("Testing DArray multMe() method...");
         try {
-            DArray dArray = new DArray(6.0, 6.0, 9.0, 9.0, 9.0);
+            DArray dArray = new DArray(handle, 6.0, 6.0, 9.0, 9.0, 9.0);
 
             dArray.multMe(handle, 2, 2);
-            double[] result = dArray.get();
+            double[] result = dArray.get(handle);
             dArray.close();
 
             double[] expected = {12.0, 6.0, 18.0, 9.0, 18.0};
@@ -173,12 +175,12 @@ public class DArrayTest {
     private static boolean testMatrixMultiplication(Handle handle) {
         System.out.println("Testing DArray multMatMat() method...");
         try {
-            DArray a = new DArray(1, 2,   3, 4,   5, 6);  // A is 2x3
-            DArray b = new DArray(7, 8, 9,   10, 11, 12); // B is 3x2
+            DArray a = new DArray(handle, 1, 2,   3, 4,   5, 6);  // A is 2x3
+            DArray b = new DArray(handle, 7, 8, 9,   10, 11, 12); // B is 3x2
             DArray c = DArray.empty(4);           // C is 2x2
 
             c.multMatMat(handle, false, false, 2, 2, 3, 1, a, 2, b, 3, 0, 2);
-            double[] result = c.get();
+            double[] result = c.get(handle);
             a.close();
             b.close();
             c.close();
@@ -196,9 +198,9 @@ public class DArrayTest {
     private static boolean testSubArray() {
         System.out.println("Testing DArray subArray() method...");
         try {
-            DArray dArray = new DArray(1.0, 2.0, 3.0, 4.0, 5.0);
+            DArray dArray = new DArray(handle, 1.0, 2.0, 3.0, 4.0, 5.0);
             DArray subArray = dArray.subArray(1, 3);
-            double[] result = subArray.get();
+            double[] result = subArray.get(handle);
             dArray.close();
             subArray.close();
 
@@ -215,9 +217,9 @@ public class DArrayTest {
     private static boolean testSetAndGetByIndex() {
         System.out.println("Testing DArray set(int index, double val) and get(int index)...");
         try {
-            DArray dArray = new DArray(1.0, 2.0, 3.0, 4.0, 5.0);
-            dArray.set(0, 10.0);
-            double val = dArray.get(0, 1)[0];
+            DArray dArray = new DArray(handle, 1.0, 2.0, 3.0, 4.0, 5.0);
+            dArray.set(handle, 0, 10.0);
+            double val = dArray.get(handle, 0, 1)[0];
             dArray.close();
 
             boolean passed = Math.abs(val - 10.0) < 1e-9;

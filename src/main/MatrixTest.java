@@ -90,7 +90,7 @@ public class MatrixTest {
         tests.add(Matrix.identity(2, hand).equals(new Matrix(hand, new double[][]{{1,0},{0,1}})));//22
         
         tests.add(square.power(2).equals(new Matrix(hand, new double[][]{{7, 10},{15, 22}})));//23
-        
+         
         A.setColumn(1, new double[]{1, 2});
         
         tests.add(Arrays.equals(A.getColumn(1), new double[]{1, 2}));//24
