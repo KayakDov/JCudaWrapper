@@ -103,8 +103,6 @@ public class MatrixTest {
         
         tests.add(Arrays.equals(A.getRow(1), new double[]{3, 2, 1}));//27
         
-        System.out.println(B);
-        
         
         System.out.println("failed tests " + 
                 Arrays.toString(IntStream.range(0, tests.size()).filter(i -> !tests.get(i)).toArray())

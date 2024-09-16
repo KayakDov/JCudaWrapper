@@ -3,6 +3,7 @@ package algebra;
 import org.apache.commons.math3.linear.RealVector;
 import org.apache.commons.math3.exception.OutOfRangeException;
 import org.apache.commons.math3.exception.DimensionMismatchException;
+import org.apache.commons.math3.exception.MathUnsupportedOperationException;
 import org.apache.commons.math3.exception.NotPositiveException;
 import processSupport.Handle;
 import storage.DArray;
@@ -39,7 +40,7 @@ public class Vector extends RealVector implements AutoCloseable {
      * @param array The array storing the vector.
      * @param handle The JCublas handle for GPU operations.
      */
-    public Vector(double[] array, Handle handle) {
+    public Vector(Handle handle, double... array) {
         this(new DArray(handle, array), 1, handle);
     }
 
@@ -86,7 +87,7 @@ public class Vector extends RealVector implements AutoCloseable {
      */
     @Override
     public int getDimension() {
-        return data.length / inc;
+        return Math.ceilDiv(data.length , inc);
     }
 
     /**
@@ -137,7 +138,7 @@ public class Vector extends RealVector implements AutoCloseable {
     @Override
     public Vector add(RealVector v) throws DimensionMismatchException {
 
-        try (Vector other = new Vector(v.toArray(), handle)) {
+        try (Vector other = new Vector(handle, v.toArray())) {
             return add(other);
         }
     }
@@ -176,7 +177,7 @@ public class Vector extends RealVector implements AutoCloseable {
     @Override
     public double dotProduct(RealVector v) throws DimensionMismatchException {
 
-        try (Vector temp = new Vector(v.toArray(), handle)) {
+        try (Vector temp = new Vector(handle, v.toArray())) {
             return dotProduct(temp);
         }
 
@@ -204,7 +205,7 @@ public class Vector extends RealVector implements AutoCloseable {
      */
     @Override
     public RealVector subtract(RealVector v) throws DimensionMismatchException {
-        try (Vector temp = new Vector(v.toArray(), handle)) {
+        try (Vector temp = new Vector(handle, v.toArray())) {
             return subtract(temp);
         }
     }
@@ -242,7 +243,7 @@ public class Vector extends RealVector implements AutoCloseable {
      */
     @Override
     public Vector ebeMultiply(RealVector v) throws DimensionMismatchException {
-        try (Vector temp = new Vector(v.toArray(), handle)) {
+        try (Vector temp = new Vector(handle, v.toArray())) {
             return ebeMultiply(temp);
         }
     }
@@ -275,7 +276,7 @@ public class Vector extends RealVector implements AutoCloseable {
      */
     @Override
     public Vector ebeDivide(RealVector v) throws DimensionMismatchException {
-        try (Vector temp = new Vector(v.toArray(), handle)) {
+        try (Vector temp = new Vector(handle, v.toArray())) {
             return ebeDivide(temp);
         }
     }
@@ -343,7 +344,7 @@ public class Vector extends RealVector implements AutoCloseable {
      */
     @Override
     public Vector append(RealVector rv) {
-        try (Vector temp = new Vector(rv.toArray(), handle)) {
+        try (Vector temp = new Vector(handle, rv.toArray())) {
             return append(temp);
         }
     }
@@ -357,8 +358,8 @@ public class Vector extends RealVector implements AutoCloseable {
      */
     public Vector append(Vector rv) {
         DArray append = DArray.empty(getDimension() + rv.getDimension());
-        append.set(handle, data, 0, 0, 1, inc);
-        append.set(handle, rv.data, getDimension(), 0, 1, rv.inc);
+        append.set(handle, data, 0, 0, 1, inc, getDimension());
+        append.set(handle, rv.data, getDimension(), 0, 1, rv.inc, rv.getDimension());
         return new Vector(data, 1, handle);
     }
 
@@ -469,14 +470,50 @@ public class Vector extends RealVector implements AutoCloseable {
      */
     @Override
     public void close() {
-        if(inc != 1) throw new IllegalAccessError("You are cleaning data from a sub vector");
+        if (inc != 1)
+            throw new IllegalAccessError("You are cleaning data from a sub vector");
         data.close();
     }
 
     @Override
     public String toString() {
-        return data.toString();
+        return copy().data.toString();
     }
-    
-    
+
+    /**
+     * Compares this vector to another vector and checks if they are equal
+     * within a specified tolerance.
+     *
+     * This method subtracts the given vector from this vector and compares the
+     * norm of the resulting vector to the specified epsilon. If the norm is
+     * less than epsilon, the vectors are considered equal, indicating that the
+     * difference between them is smaller than the given tolerance.
+     *
+     * @param other The vector to compare with this vector.
+     * @param epsilon The tolerance value within which the vectors are
+     * considered equal. Must be a non-negative number.
+     * @return true if the difference between the vectors is less than the
+     * specified epsilon, false otherwise.     *
+     */
+    public boolean equals(Vector other, double epsilon) {
+        return subtract(other).getNorm() < epsilon;
+    }
+
+    /**
+     * Compares this vector to another vector and checks if they are equal
+     * within a default tolerance of 1e-10.
+     *
+     * This method subtracts the given vector from this vector and compares the
+     * norm of the resulting vector to the specified epsilon. If the norm is
+     * less than epsilon, the vectors are considered equal, indicating that the
+     * difference between them is smaller than the given tolerance.
+     *
+     * @param other The vector to compare with this vector.
+     * @return true if the difference between the vectors is less than the
+     * specified epsilon, false otherwise.     *
+     */
+    public boolean equals(Vector other) throws MathUnsupportedOperationException {
+        return equals(other, 1e-10);
+    }
+
 }

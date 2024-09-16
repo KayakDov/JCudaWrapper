@@ -935,7 +935,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
      */
     @Override
     public Vector operate(RealVector v) throws DimensionMismatchException {
-        try(Vector temp = new Vector(v.toArray(), handle)){
+        try(Vector temp = new Vector(handle, v.toArray())){
             return operate(temp);
         }
     }
@@ -1072,7 +1072,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
      * match the number of rows.
      */
     public void setColumnVector(int column, Vector vector) throws OutOfRangeException, MatrixDimensionMismatchException {
-        data.set(handle, vector.data, index(0, column), 0, 0, vector.inc);
+        data.set(handle, vector.data, index(0, column), 0, 0, vector.inc, Math.min(height, vector.getDimension()));
     }
 
     /**
@@ -1090,7 +1090,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
         if (array.length != width)
             throw new MatrixDimensionMismatchException(array.length, 0, width, 0);
 
-        try(Vector temp = new Vector(array, handle)){
+        try(Vector temp = new Vector(handle, array)){
             setRowVector(row, temp);
         }
     }
@@ -1146,7 +1146,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
      * the matrix width
      */
     public void setRowVector(int row, Vector vector) throws OutOfRangeException, MatrixDimensionMismatchException {
-        data.set(handle, vector.data, index(row, 0), 0, colDist, vector.inc);
+        data.set(handle, vector.data, index(row, 0), 0, colDist, vector.inc, Math.min(width, vector.getDimension()));
     }
 
     /**

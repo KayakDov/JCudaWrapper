@@ -138,11 +138,12 @@ public class DArray extends Array {
      * @param toInc stride between consecutive elements of the array copied to.
      * @param fromStart The index to start copying from.
      * @param fromInc stride between consecutive elements of this array.
+     * @param length The number of elements to copy.
      */
-    public void get(Handle handle, DArray to, int toStart, int fromStart, int toInc, int fromInc) {
+    public void get(Handle handle, DArray to, int toStart, int fromStart, int toInc, int fromInc, int length) {
 
         JCublas2.cublasDcopy(handle.get(),
-                to.length / toInc,
+                length,
                 pointer.withByteOffset(fromStart*Sizeof.DOUBLE),
                 fromInc,
                 to.pointer.withByteOffset(toStart*Sizeof.DOUBLE),
@@ -159,10 +160,11 @@ public class DArray extends Array {
      * @param toInc stride between consecutive elements of the array copied to.
      * @param toStart The index to begin copying to.
      * @param fromInc stride between consecutive elements of this array.
+     * @param length The number of elements to copy.
      */
-    public void set(Handle handle, DArray from, int toStart, int fromStart, int toInc, int fromInc) {
+    public void set(Handle handle, DArray from, int toStart, int fromStart, int toInc, int fromInc, int length) {
 
-        from.get(handle, this, toStart, fromStart, toInc, fromInc);
+        from.get(handle, this, toStart, fromStart, toInc, fromInc, length);
     }
 
     /**
@@ -668,7 +670,7 @@ public class DArray extends Array {
         checkNull(handle);
 
         DSingleton from = new DSingleton(fill, handle);
-        set(handle, from, 0, 0, inc, 0);
+        set(handle, from, 0, 0, inc, 0, Math.ceilDiv(length, inc));
         return this;
     }
 
@@ -897,7 +899,7 @@ public class DArray extends Array {
     public DArray multMe(Handle handle, double mult, int inc) {
         checkNull(handle);
         checkLowerBound(1, inc);
-        JCublas2.cublasDscal(handle.get(), length / inc, Pointer.to(new double[]{mult}), pointer, inc);
+        JCublas2.cublasDscal(handle.get(), Math.ceilDiv(length, inc), Pointer.to(new double[]{mult}), pointer, inc);
         return this;
     }
 
