@@ -276,175 +276,17 @@ abstract class Array implements AutoCloseable {
     public void close() {
         cleanable.clean();
     }
-
-
-    /**
-     * Fills a matrix with a scalar value directly on the GPU using a CUDA
-     * kernel.
-     *
-     * This function sets all elements of the matrix A to the given scalar
-     * value. The matrix A is stored in column-major order, and the leading
-     * dimension of A is specified by lda.
-     *
-     * @param fill the scalar value to set all elements of A
-     * @param inc The increment with which the method iterates over the array.
-     * @return this.
-     */
-    protected Array fillArray(Pointer fill, int inc) {
-
-        runKernel1d("src/gpu/ArrayFillKernel.ptx",
-                "fillArray",
-                new Pointer[]{
-                    fill,
-                    Pointer.to(new int[]{inc})
-                }
-        );
-        return this;
-    }
-
+    
+    
     /**
      * Sets the contents of this array to 0.
      */
     public void fill0(Handle handle){
         JCuda.cudaMemsetAsync(pointer, 0, length*type.size, handle.getStream());
     }
+
     
-    /**
-     * Fills a matrix with a value.
-     *
-     * @param height The height of the matrix.
-     * @param width The width of the matrix.
-     * @param lda The distance between the first element of each column of the
-     * matrix. This should be at least the height of the matrix.
-     * @param fill The value the matrix is to be filled with.
-     * @return this, after having been filled.
-     */
-    protected Array fillMatrix(int height, int width, int lda, Pointer fill) {
-        checkPos(width, height);
-        checkAgainstLength(width * height);
-        
-        runKernel2d("src/gpu/MatrixFillKernel.ptx",
-                "fillMatrix",
-                height,
-                width,
-                new Pointer[]{
-                    Pointer.to(new int[]{lda}),
-                    fill
-                }
-        );
-        return this;
-    }
-
-    /**
-     * TODO: Check the run kernel methods.  They may not work.
-     * 
-     * Runs a CUDA kernel by loading the specified PTX file and executing the
-     * function with the provided arguments on the GPU. The first argumrnt of
-     * the kernel should be this pointer, and the 2nd argument should be this
-     * length.
-     *
-     * @param kernelFileName The path to the PTX file containing the compiled
-     * CUDA kernel. This file must be compiled beforehand using the `nvcc`
-     * compiler.
-     * @param kernelFunctionName The name of the kernel function to execute.
-     * This should match the function name defined in the .PTX file.
-     * @param args The arguments to pass to the CUDA kernel. These arguments
-     * will be passed in the order they appear. The kernel's expected parameters
-     * must match the types and order of these arguments.
-     *
-     * Example usage:      <pre>
-     * {@code
-     * runKernel("src/gpu/MatrixFillKernel.ptx", "fillMatrix", Pointer.to(new double[]{scalar}));
-     * }
-     * </pre>
-     *
-     * Process: 1. The PTX file is loaded, and a module is created from it. 2. A
-     * handle to the kernel function (`CUfunction`) is obtained. 3. Grid and
-     * block sizes are calculated based on the number of elements to process. 4.
-     * The provided arguments are packed into a `Pointer` array and combined
-     * with additional internal arguments such as the device memory pointer and
-     * the size of the matrix. 5. The kernel is launched using `cuLaunchKernel`,
-     * which runs the function on the GPU with the specified grid and block
-     * sizes. 6. Finally, the method synchronizes the context to ensure that the
-     * kernel execution completes before continuing.
-     */
-    private void runKernel(String kernelFileName, String kernelFunctionName, Pointer[] args,
-            int gridSizeX, int gridSizeY, int blockSizeX, int blockSizeY) {
-        checkPos(gridSizeX, gridSizeY, blockSizeX, blockSizeY);
-        
-        
-        // Load the PTX file
-        CUmodule module = new CUmodule();
-        JCudaDriver.cuModuleLoad(module, kernelFileName);
-
-        // Obtain a function handle for the kernel
-        CUfunction function = new CUfunction();
-        JCudaDriver.cuModuleGetFunction(function, module, kernelFunctionName);
-
-        // Prepare kernel parameters
-        Pointer kernelParameters = Pointer.to(args);
-
-        // Launch the kernel
-        JCudaDriver.cuLaunchKernel(function,
-                gridSizeX, gridSizeY, 1, // Grid size in 2D
-                blockSizeX, blockSizeY, 1, // Block size in 2D
-                0, null, // Shared memory size and stream
-                kernelParameters, null);
-
-        // Synchronize to wait for the kernel to finish
-        JCudaDriver.cuCtxSynchronize();
-    }
-
-    /**
-     * Runs the requested kernel on an array.
-     *
-     * @param kernelFileName The name and relative location of the kernel file.
-     * @param kernelFunctionName The name of the function in the kernel.
-     * @param args Sequentially correct arguments not including pointer and
-     * length.
-     */
-    private void runKernel1d(String kernelFileName, String kernelFunctionName, Pointer... args) {
-
-        int blockSizeX = 256;
-        int gridSizex = (length + blockSizeX - 1) / blockSizeX;  // Ensures all elements are covered
-        int blockSizeY = 1;
-        int gridSizeY = 1;
-
-        Pointer[] argsWithLocal = new Pointer[args.length + 2];
-        System.arraycopy(args, 0, argsWithLocal, 2, args.length);
-        argsWithLocal[0] = Pointer.to(pointer);
-        argsWithLocal[1] = Pointer.to(new int[]{length});
-
-        runKernel(kernelFileName, kernelFunctionName, argsWithLocal, gridSizex, gridSizeY, blockSizeX, blockSizeY);
-    }
-
-    /**
-     * Runs a kernel on 2d data.
-     *
-     * @param kernelFileName The name of the file the kernel is in.
-     * @param kernelFunctionName The name of the kernel function.
-     * @param width The width of the matrix.
-     * @param height The height of the matrix.
-     * @param args The sequentially correct arguments after pointer, height,
-     * width.
-     */
-    private void runKernel2d(String kernelFileName, String kernelFunctionName, int height, int width, Pointer... args) {
-
-        Pointer[] argsWithLocal = new Pointer[args.length + 3];
-        System.arraycopy(args, 0, argsWithLocal, 3, args.length);
-        argsWithLocal[0] = Pointer.to(pointer);
-        argsWithLocal[1] = Pointer.to(new int[]{height});
-        argsWithLocal[2] = Pointer.to(new int[]{width});
-
-        int blockSize = 16; // Threads per block in X direction (width)        
-
-        int gridSizeX = (width + blockSize - 1) / blockSize;
-        int gridSizeY = (height + blockSize - 1) / blockSize;
-
-        runKernel(kernelFileName, kernelFunctionName, argsWithLocal, gridSizeX, gridSizeY, blockSize, blockSize);
-
-    }
-
+    
     /**
      * A pointer to a singleton array containing d.
      * @param d A double that needs a pointer.
@@ -507,3 +349,154 @@ abstract class Array implements AutoCloseable {
     
     
 }
+
+
+
+
+
+//    /**
+//     * Uses a kernel to find the argmax and the maximum element for the array.
+//     * @param inc The stride length of the array.
+//     * @return The maximum element and its index in the array.
+//     */
+//    public double[] findMax(Handle handle, int inc) {
+//
+//        DArray result = DArray.empty(2);
+//        
+//        runKernel1d("src/kernels/find_max.ptx",
+//                "find_max",
+//                Sizeof.DOUBLE +Sizeof.INT,
+//                new Pointer[]{
+//                    Pointer.to(result.pointer),
+//                    Pointer.to(new int[]{inc})
+//                }
+//        );
+//        return result.get(handle);
+//    }
+//    
+//    public static void main(String[] args) {
+//        Handle hand = new Handle();
+//        DArray da = new DArray(hand, 5, 3, 10, 9);
+//        double[] result = da.findMax(hand, 1);
+//        
+//        
+//        System.out.println(Arrays.toString(result));
+//        
+//        hand.close();
+//        da.close();
+//    }
+//
+//    
+//
+//    /**
+//     * TODO: Check the run kernel methods.  They may not work.
+//     * 
+//     * Runs a CUDA kernel by loading the specified PTX file and executing the
+//     * function with the provided arguments on the GPU. The first argumrnt of
+//     * the kernel should be this pointer, and the 2nd argument should be this
+//     * length.
+//     *
+//     * @param kernelFileName The path to the PTX file containing the compiled
+//     * CUDA kernel. This file must be compiled beforehand using the `nvcc`
+//     * compiler.
+//     * @param kernelFunctionName The name of the kernel function to execute.
+//     * This should match the function name defined in the .PTX file.
+//     * @param args The arguments to pass to the CUDA kernel. These arguments
+//     * will be passed in the order they appear. The kernel's expected parameters
+//     * must match the types and order of these arguments.
+//     *
+//     * Example usage:      <pre>
+//     * {@code
+//     * runKernel("src/gpu/MatrixFillKernel.ptx", "fillMatrix", Pointer.to(new double[]{scalar}));
+//     * }
+//     * </pre>
+//     *
+//     * Process: 1. The PTX file is loaded, and a module is created from it. 2. A
+//     * handle to the kernel function (`CUfunction`) is obtained. 3. Grid and
+//     * block sizes are calculated based on the number of elements to process. 4.
+//     * The provided arguments are packed into a `Pointer` array and combined
+//     * with additional internal arguments such as the device memory pointer and
+//     * the size of the matrix. 5. The kernel is launched using `cuLaunchKernel`,
+//     * which runs the function on the GPU with the specified grid and block
+//     * sizes. 6. Finally, the method synchronizes the context to ensure that the
+//     * kernel execution completes before continuing.
+//     */
+//    private void runKernel(String kernelFileName, String kernelFunctionName, Pointer[] args,
+//            int gridSizeX, int gridSizeY, int blockSizeX, int blockSizeY, int sharedMemSize) {
+//        checkPos(gridSizeX, gridSizeY, blockSizeX, blockSizeY);
+//        
+//        // Load the PTX file
+//        CUmodule module = new CUmodule();
+//        JCudaDriver.cuModuleLoad(module, kernelFileName);
+//
+//        // Obtain a function handle for the kernel
+//        CUfunction function = new CUfunction();
+//        JCudaDriver.cuModuleGetFunction(function, module, kernelFunctionName);
+//
+//        // Prepare kernel parameters
+//        Pointer kernelParameters = Pointer.to(args);
+//
+//        // Launch the kernel
+//        JCudaDriver.cuLaunchKernel(function,
+//                gridSizeX, gridSizeY, 1, // Grid size in 2D
+//                blockSizeX, blockSizeY, 1, // Block size in 2D
+//                sharedMemSize, null, // Shared memory size and stream
+//                kernelParameters, null);
+//
+//        // Synchronize to wait for the kernel to finish
+//        JCudaDriver.cuCtxSynchronize();
+//    }
+//
+//    /**
+//     * Runs the requested kernel on an array.
+//     *
+//     * @param kernelFileName The name and relative location of the kernel file.
+//     * @param kernelFunctionName The name of the function in the kernel.
+//     * @param args Sequentially correct arguments not including pointer and
+//     * length.
+//     */
+//    private void runKernel1d(String kernelFileName, String kernelFunctionName, int extMemPerBlock, Pointer... args) {
+//
+//        int blockSizeX = 256;
+//        int gridSizex = (length + blockSizeX - 1) / blockSizeX;  // Ensures all elements are covered
+//        int blockSizeY = 1;
+//        int gridSizeY = 1;
+//        
+//        int sharedMemSize = blockSizeX * extMemPerBlock; 
+//
+//
+//
+//        Pointer[] argsWithLocal = new Pointer[args.length + 2];
+//        System.arraycopy(args, 0, argsWithLocal, 2, args.length);
+//        argsWithLocal[0] = Pointer.to(pointer);
+//        argsWithLocal[1] = Pointer.to(new int[]{length});
+//
+//        runKernel(kernelFileName, kernelFunctionName, argsWithLocal, gridSizex, gridSizeY, blockSizeX, blockSizeY, sharedMemSize);
+//    }
+//
+//    /**
+//     * Runs a kernel on 2d data.
+//     *
+//     * @param kernelFileName The name of the file the kernel is in.
+//     * @param kernelFunctionName The name of the kernel function.
+//     * @param width The width of the matrix.
+//     * @param height The height of the matrix.
+//     * @param args The sequentially correct arguments after pointer, height,
+//     * width.
+//     */
+//    private void runKernel2d(String kernelFileName, String kernelFunctionName, int height, int width, Pointer... args) {
+//
+//        Pointer[] argsWithLocal = new Pointer[args.length + 3];
+//        System.arraycopy(args, 0, argsWithLocal, 3, args.length);
+//        argsWithLocal[0] = Pointer.to(pointer);
+//        argsWithLocal[1] = Pointer.to(new int[]{height});
+//        argsWithLocal[2] = Pointer.to(new int[]{width});
+//
+//        int blockSize = 16; // Threads per block in X direction (width)        
+//
+//        int gridSizeX = (width + blockSize - 1) / blockSize;
+//        int gridSizeY = (height + blockSize - 1) / blockSize;
+//
+//        runKernel(kernelFileName, kernelFunctionName, argsWithLocal, gridSizeX, gridSizeY, blockSize, blockSize);
+//
+//    }

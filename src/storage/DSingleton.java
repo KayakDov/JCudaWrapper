@@ -29,21 +29,25 @@ public class DSingleton extends DArray{
     /**
      * Creates a singleton from a cpu element.
      * @param d The element in the singleton.
+     * @param hand
      */
-    public DSingleton(double d, Handle hand){
+    public DSingleton(Handle hand, double d){
         super(hand, d);
     }
     
     /**
      * Gets the value in this.
+     * @param hand This should be the same handle that's used to make whatever
+     * results are being retrieved.  The handle is synchronized before the result
+     * is returned.
      * @return The value in this singleton.
      */
-    public double getVal(){
-        double[] get;
-        try(Handle hand = new Handle()){
-             get = get(hand);
-        }
-        return get[0];
+    public double getVal(Handle hand){
+        double[] val = get(hand);
+        
+        hand.synch();
+        
+        return val[0];
     }    
     
 }

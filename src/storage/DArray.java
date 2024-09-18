@@ -5,10 +5,17 @@ import java.util.Arrays;
 import jcuda.Pointer;
 import jcuda.Sizeof;
 import jcuda.driver.CUdeviceptr;
+import jcuda.driver.CUfunction;
+import jcuda.driver.CUmodule;
+import jcuda.driver.JCudaDriver;
 import jcuda.jcublas.JCublas2;
 import jcuda.jcublas.cublasDiagType;
 import jcuda.jcublas.cublasFillMode;
+import jcuda.jcublas.cublasHandle;
 import jcuda.jcublas.cublasOperation;
+import jcuda.runtime.JCuda;
+import jcuda.runtime.cudaError;
+import jcuda.runtime.cudaMemcpyKind;
 import jcuda.runtime.cudaStream_t;
 
 /**
@@ -144,9 +151,9 @@ public class DArray extends Array {
 
         JCublas2.cublasDcopy(handle.get(),
                 length,
-                pointer.withByteOffset(fromStart*Sizeof.DOUBLE),
+                pointer(fromStart),
                 fromInc,
-                to.pointer.withByteOffset(toStart*Sizeof.DOUBLE),
+                to.pointer(toStart),
                 toInc
         );
     }
@@ -351,17 +358,23 @@ public class DArray extends Array {
     }
 
     /**
-     * Computes the Euclidean norm of the vector X (2-norm):
+     * Computes the Euclidean norm of the vector X (2-norm): This method
+     * synchronizes the handle.
      *
      * <pre>
      * result = sqrt(X[0]^2 + X[1]^2 + ... + X[n-1]^2)
      * </pre>
      *
      * @param handle handle to the cuBLAS library context.
+     * @param length The number of scalars that will be squared.
+     * @param inc The stride step over this array.
      * @return The Euclidean norm of this vector.
      */
-    public DSingleton norm(Handle handle) {
-        return norm(handle, new DSingleton());
+    public double norm(Handle handle, int length, int inc) {
+        double[] result = new double[1];
+        norm(handle, length, inc, result, 0);
+        handle.synch();
+        return result[0];
     }
 
     /**
@@ -372,13 +385,144 @@ public class DArray extends Array {
      * </pre>
      *
      * @param handle handle to the cuBLAS library context.
+     * @param length The number of scalars that will be squared.
+     * @param inc The stride step over this array.
      * @param result where the result is to be stored.
-     * @return The Euclidean norm of this vector.
+     * @param toIndex The index in the result array to store the result;
      */
-    public DSingleton norm(Handle handle, DSingleton result) {
-        checkNull(handle);
-        JCublas2.cublasDnrm2(handle.get(), length, pointer, 1, result.pointer);
-        return result;
+    public void norm(Handle handle, int length, int inc, double[] result, int toIndex) {
+        //Warning, the cuda documentation says that the return pointer can 
+        //either device or host, but there seems to be a core dump whenever
+        //I try to put the result on the host.
+        checkNull(handle, result);
+        JCublas2.cublasDnrm2(handle.get(), length, pointer, inc, Pointer.to(result).withByteOffset(toIndex * Sizeof.DOUBLE));
+    }
+
+
+    /**
+     * Finds the index of the element with the minimum absolute value in the
+     * vector X:
+     *
+     * <pre>
+     * result = index of min(|X[0]|, |X[1]|, ..., |X[n-1]|)
+     * </pre>
+     *
+     * @param handle handle to the cuBLAS library context.
+     * @param length The number of elements to search.
+     * @param inc The stride step over the array.
+     * @param result where the result (index of the minimum absolute value) is
+     * to be stored.
+     * @param toIndex The index in the result array to store the result.
+     */
+    public void argMinAbs(Handle handle, int length, int inc, int[] result, int toIndex) {
+        checkNull(handle, result);
+        JCublas2.cublasIdamin(handle.get(), length, pointer, inc, Pointer.to(result).withByteOffset(toIndex * Sizeof.INT));
+        result[toIndex] -= 1;//It looks like the cuda methods are index-1 based.
+    }
+    
+    /**
+     * Finds the index of the element with the maximum absolute value in the
+     * vector X:
+     *
+     * <pre>
+     * result = index of min(|X[0]|, |X[1]|, ..., |X[n-1]|)
+     * </pre>
+     *
+     * @param handle handle to the cuBLAS library context.
+     * @param length The number of elements to search.
+     * @param inc The stride step over the array.
+     * @param result where the result (index of the maximum absolute value) is
+     * to be stored.
+     * @param toIndex The index in the result array to store the result.
+     */
+    public void argMaxAbs(Handle handle, int length, int inc, int[] result, int toIndex) {
+        checkNull(handle, result);
+        JCublas2.cublasIdamax(handle.get(), length, pointer, inc, Pointer.to(result).withByteOffset(toIndex * Sizeof.INT));
+        result[toIndex] -= 1; //It looks like the cuda methods are index-1 based.
+    }    
+
+    /**
+     * Finds the index of the element with the minimum absolute value in the
+     * vector X:
+     *
+     * <pre>
+     * result = index of min(|X[0]|, |X[1]|, ..., |X[n-1]|)
+     * </pre>
+     *
+     * This method synchronizes the handle.
+     *
+     * @param handle handle to the cuBLAS library context.
+     * @param length The number of elements to search.
+     * @param inc The stride step over the array.
+     * @return The index of the lement with the minimum absolute value.
+     */
+    public int argMinAbs(Handle handle, int length, int inc) {
+        int[] result = new int[1];
+        argMinAbs(handle, length, inc, result, 0);
+        handle.synch();
+        return result[0];
+    }
+
+    /**
+     * Finds the index of the element with the maximum absolute value in the
+     * vector X:
+     *
+     * <pre>
+     * result = index of max(|X[0]|, |X[1]|, ..., |X[n-1]|)
+     * </pre>
+     *
+     * This method synchronizes the handle.
+     *
+     * @param handle handle to the cuBLAS library context.
+     * @param length The number of elements to search.
+     * @param inc The stride step over the array.
+     * @return The index of the element with greatest absolute value.
+     *
+     */
+    public int argMaxAbs(Handle handle, int length, int inc) {
+        int[] result = new int[1];
+        argMaxAbs(handle, length, inc, result, 0);
+        handle.synch();
+        return result[0];
+    }
+
+    /**
+     * Computes the sum of the absolute values of the vector X (1-norm):
+     *
+     * <pre>
+     * result = |X[0]| + |X[1]| + ... + |X[n-1]|
+     * </pre>
+     *
+     * This method synchronizes the handle.
+     *
+     * @param handle handle to the cuBLAS library context.
+     * @param length The number of scalars to include in the sum.
+     * @param inc The stride step over the array.
+     * @return The l1 norm of the vector.
+     */
+    public double sumAbs(Handle handle, int length, int inc) {
+        double[] result = new double[1];
+        DArray.this.sumAbs(handle, length, inc, result, 0);
+        handle.synch();
+        return result[0];
+    }
+    
+    /**
+     * Computes the sum of the absolute values of the vector X (1-norm):
+     *
+     * <pre>
+     * result = |X[0]| + |X[1]| + ... + |X[n-1]|
+     * </pre>
+     *
+     * @param handle handle to the cuBLAS library context.
+     * @param length The number of scalars to include in the sum.
+     * @param inc The stride step over the array.
+     * @param result where the result is to be stored.
+     * @param toIndex The index in the result array to store the result.
+     */
+    public void sumAbs(Handle handle, int length, int inc, double[] result, int toIndex) {
+        checkNull(handle, result);
+        JCublas2.cublasDasum(handle.get(), length, pointer, inc, Pointer.to(result).withByteOffset(toIndex * Sizeof.DOUBLE));
     }
 
     /**
@@ -509,9 +653,9 @@ public class DArray extends Array {
     /**
      * Solves the system of linear equations Ax = b, where A is a triangular
      * banded matrix, and x is the solution vector.
-     * 
-     * b is this when the algorithm begins, and x is this when the algorithm ends.
-     * That is to say the solution to Ax = this is stored in this.
+     *
+     * b is this when the algorithm begins, and x is this when the algorithm
+     * ends. That is to say the solution to Ax = this is stored in this.
      *
      * A triangular banded matrix is a special type of sparse matrix where the
      * non-zero elements are confined to a diagonal band around the main
@@ -520,8 +664,8 @@ public class DArray extends Array {
      *
      * The matrix is stored in a compact banded format, where only the diagonals
      * of interest are represented to save space. For a lower diagonal matrix,
-     * the first row represents the main diagonal, and subsequent rows represent 
-     * the diagonals progressively further from the main diagonal.  An upper 
+     * the first row represents the main diagonal, and subsequent rows represent
+     * the diagonals progressively further from the main diagonal. An upper
      * diagonal matrix is stored with the last row as the main diagonal and the
      * first row as the furthest diagonal from the main.
      *
@@ -529,9 +673,10 @@ public class DArray extends Array {
      * equations for the vector x.
      *
      * @param handle The JCublas handle required for GPU operations.
-     * @param isUpper Indicates whether the matrix A is upper or lower triangular.
-     * Use {@code cublasFillMode.CUBLAS_FILL_MODE_UPPER} for upper triangular,
-     * or {@code cublasFillMode.CUBLAS_FILL_MODE_LOWER} for lower triangular.
+     * @param isUpper Indicates whether the matrix A is upper or lower
+     * triangular. Use {@code cublasFillMode.CUBLAS_FILL_MODE_UPPER} for upper
+     * triangular, or {@code cublasFillMode.CUBLAS_FILL_MODE_LOWER} for lower
+     * triangular.
      * @param transposeA Whether to transpose the matrix A before solving the
      * system. Use {@code cublasOperation.CUBLAS_OP_T} for transpose, or
      * {@code cublasOperation.CUBLAS_OP_N} for no transpose.
@@ -540,13 +685,13 @@ public class DArray extends Array {
      * ({@code cublasDiagType.CUBLAS_DIAG_NON_UNIT}).
      * @param rowsA The number of rows/columns of the matrix A (the order of the
      * matrix).
-     * @param nonPrimaryDiagonals The number of subdiagonals or superdiagonals in the triangular
-     * banded matrix.
-     * @param Ma A compact form {@link DArray} representing the triangular banded
-     * matrix A.
+     * @param nonPrimaryDiagonals The number of subdiagonals or superdiagonals
+     * in the triangular banded matrix.
+     * @param Ma A compact form {@link DArray} representing the triangular
+     * banded matrix A.
      * @param ldm The leading dimension of the banded matrix, which defines the
      * row count in the compacted matrix representation.
-     
+     *
      * @param inc The stride for stepping through the elements of b.
      * @return The updated {@link DArray} (b), now containing the solution
      * vector x.
@@ -555,9 +700,9 @@ public class DArray extends Array {
         // Call the cublasDtbsv function to solve the system
         JCublas2.cublasDtbsv(
                 handle.get(),
-                isUpper?cublasFillMode.CUBLAS_FILL_MODE_UPPER:cublasFillMode.CUBLAS_FILL_MODE_LOWER, // Upper or lower triangular matrix
-                transposeA?cublasOperation.CUBLAS_OP_T:cublasOperation.CUBLAS_OP_N, // Whether to transpose A
-                onesOnDiagonal?cublasDiagType.CUBLAS_DIAG_UNIT:cublasDiagType.CUBLAS_DIAG_NON_UNIT, // Whether A is unit or non-unit triangular
+                isUpper ? cublasFillMode.CUBLAS_FILL_MODE_UPPER : cublasFillMode.CUBLAS_FILL_MODE_LOWER, // Upper or lower triangular matrix
+                transposeA ? cublasOperation.CUBLAS_OP_T : cublasOperation.CUBLAS_OP_N, // Whether to transpose A
+                onesOnDiagonal ? cublasDiagType.CUBLAS_DIAG_UNIT : cublasDiagType.CUBLAS_DIAG_NON_UNIT, // Whether A is unit or non-unit triangular
                 rowsA, // Number of rows/columns in A
                 nonPrimaryDiagonals, // Number of subdiagonals/superdiagonals
                 Ma.pointer, // Pointer to the compact form of matrix A
@@ -567,8 +712,6 @@ public class DArray extends Array {
 
         return this;  // The result (solution vector x) is stored in b
     }
-    
-    
 
     @Override
     public String toString() {
@@ -669,7 +812,7 @@ public class DArray extends Array {
         checkPos(inc);
         checkNull(handle);
 
-        DSingleton from = new DSingleton(fill, handle);
+        DSingleton from = new DSingleton(handle, fill);
         set(handle, from, 0, 0, inc, 0, Math.ceilDiv(length, inc));
         return this;
     }
@@ -700,19 +843,30 @@ public class DArray extends Array {
         return this;
     }
 
-    public static void main(String[] args) {
-        try (Handle handle = new Handle()) {
-            DArray test = DArray.empty(9);
-
-            DArray a = DArray.empty(1);
-            DArray b = DArray.empty(9);
-
-            test.addAndSet(handle, false, false, 3, 3, 0, a, 3, 1, b, 3, 3);
-
-            System.out.println(test.toString());
-        }
+    /**
+     * Computes the dot product of two vectors:
+     *
+     * <pre>
+     * result = X[0] * Y[0] + X[1] * Y[1] + ... + X[n-1] * Y[n-1]
+     * </pre>
+     *
+     * This method synchronizes the handle.
+     * @param handle handle to the cuBLAS library context.
+     * @param incX The number of spaces to jump when incrementing forward
+     * through x.
+     * @param inc The number of spaces to jump when incrementing forward through
+     * this array.
+     * @param x Pointer to vector X in GPU memory.
+     * @return The dot product of X and Y.
+     */
+    public double dot(Handle handle, DArray x, int incX, int inc) {
+        double[] result = new double[1];
+        dot(handle, x, incX, inc, result, 0);
+        handle.synch();
+        return result[0];
     }
-
+    
+    
     /**
      * Computes the dot product of two vectors:
      *
@@ -726,14 +880,14 @@ public class DArray extends Array {
      * @param inc The number of spaces to jump when incrementing forward through
      * this array.
      * @param x Pointer to vector X in GPU memory.
-     * @return The dot product of X and Y.
+     * @param result The array the answer should be put in.
+     * @param resultInd The index of the array the answer should be put in.     
      */
-    public double dot(Handle handle, DArray x, int incX, int inc) {
-        checkNull(handle, x);
+    public void dot(Handle handle, DArray x, int incX, int inc, double[] result, int resultInd) {
+        checkNull(handle, x, result);
+        checkPos(resultInd, inc, incX);
+        JCublas2.cublasDdot(handle.get(), length, x.pointer, incX, pointer, inc, Pointer.to(result).withByteOffset(resultInd*Sizeof.DOUBLE));
 
-        double[] result = new double[1];
-        JCublas2.cublasDdot(handle.get(), length, x.pointer, incX, pointer, inc, Pointer.to(result));
-        return result[0];
     }
 
     /**
@@ -902,6 +1056,54 @@ public class DArray extends Array {
         JCublas2.cublasDscal(handle.get(), Math.ceilDiv(length, inc), Pointer.to(new double[]{mult}), pointer, inc);
         return this;
     }
+
+    /**
+     * Runs the find_max kernel to find the maximum value and its index in the
+     * input array.
+     *
+     * @param result Pointer to store the result on the device.
+     * @param handle CUDA stream to run the kernel.
+     */
+    
+    public void runFindMax(DArray result, Handle handle) {
+        // Define kernel parameters
+        int BLOCK_SIZE = 256;
+        
+        int numBlocks = (length + BLOCK_SIZE - 1) / BLOCK_SIZE;
+        int sharedMemSize = BLOCK_SIZE * Sizeof.FLOAT;
+
+        // Load the PTX file and get the kernel function
+        CUmodule module = new CUmodule();
+        JCudaDriver.cuModuleLoad(module, "find_max.ptx");
+        CUfunction function = new CUfunction();
+        JCudaDriver.cuModuleGetFunction(function, module, "find_maximum_kernel");
+
+        Pointer mutex = Array.empty(1, PrimitiveType.INT);
+        JCuda.cudaMemsetAsync(mutex, 0, Sizeof.INT, handle.getStream());
+        
+        // Launch the kernel
+        JCudaDriver.cuLaunchKernel(
+            function,                  // Kernel function
+            numBlocks, 1, 1,           // Grid dimensions
+            BLOCK_SIZE, 1, 1,          // Block dimensions
+            sharedMemSize,             // Shared memory size
+            null,                      // Stream (null for default)
+            Pointer.to(
+                pointer,                // Input array
+                result.pointer,                  // Pointer to the max result
+                mutex,                // Mutex for synchronization
+                Pointer.to(new int[]{length})            // Array size
+            ),
+            null                       // Kernel extra arguments (if any)
+        );
+
+        // Synchronize the device
+        JCudaDriver.cuCtxSynchronize();
+
+        // Clean up
+        JCudaDriver.cuModuleUnload(module);
+    }
+
 
 }
 

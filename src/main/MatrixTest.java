@@ -41,7 +41,7 @@ public class MatrixTest {
         tests.add(A.multiply(1).equals(A));//6
         
         Matrix addOneResult = new Matrix(
-                sixCount1D.addToMe(hand, 1, new DSingleton(1, hand), 0, 1), 
+                sixCount1D.addToMe(hand, 1, new DSingleton(hand, 1), 0, 1), 
                         2, 3, 3, hand);
         
         tests.add(A.scalarAdd(1).equals(addOneResult));//7

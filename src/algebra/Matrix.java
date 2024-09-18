@@ -42,7 +42,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     /**
      * The underlying GPU data storage for this matrix.
      */
-    private final DArray data;
+    final DArray data;
 
     /**
      * Handle for managing JCublas operations, usually unique per thread.
@@ -149,10 +149,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     }
 
     /**
-     * Performs matrix multiplication using JCublas.
-     *
-     * @param m The matrix to multiply with. This matrix is imported to the gpu.
-     * @return A new matrix that is the product of this matrix and the other.
+     * {@inheritDoc}
      */
     @Override
     public Matrix multiply(RealMatrix m) throws DimensionMismatchException {
@@ -165,7 +162,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
 
     /**
      * Performs matrix multiplication using JCublas.
-     *
+     * @see Matrix#multiply(org.apache.commons.math3.linear.RealMatrix) 
      * @param other The matrix to multiply with.
      * @return A new matrix that is the product of this matrix and the other.
      */
@@ -251,12 +248,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     }
 
     /**
-     * Returns a new matrix that is the sum of this matrix and another matrix.
-     *
-     * @param m The matrix to be added to this one.
-     * @return A new matrix that is the sum of this matrix and another matrix.
-     * @throws MatrixDimensionMismatchException If the other matrice's
-     * dimensions don't match this matrice's dimensions.
+     * {@inheritDoc}
      */
     @Override
     public Matrix add(RealMatrix m) throws MatrixDimensionMismatchException {
@@ -266,9 +258,8 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
         return add;
     }
 
-    /**
-     * Performs element-wise addition with another matrix.
-     *
+    /**     
+     *@see Matrix#add(org.apache.commons.math3.linear.RealMatrix) 
      * @param other The other matrix to add.
      * @return The result of element-wise addition.
      */
@@ -313,13 +304,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     }
 
     /**
-     * Subtracts @code{m} from this matrix and returns the difference. This
-     * matrix is unchanged.
-     *
-     * @param m The matrix to me subtracted from this matrix.
-     * @return A new matrix that is the difference between the two matrices.
-     * @throws MatrixDimensionMismatchException If the dimensions of the
-     * matrices don't match.
+     * {@inheritDoc}
      */
     @Override
     public Matrix subtract(RealMatrix m) throws MatrixDimensionMismatchException {
@@ -333,7 +318,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     }
 
     /**
-     * Performs element-wise addition with another matrix.
+     * @see Matrix#subtract(org.apache.commons.math3.linear.RealMatrix) 
      *
      * @param other The other matrix to add.
      * @return The result of element-wise addition.
@@ -358,11 +343,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     }
 
     /**
-     * Multiplies everything in this matrix by a scalar and returns a new
-     * matrix. This one remains unchanged.
-     *
-     * @param d The scalar that does the multiplying.
-     * @return A new matrix equal to this matrix times a scalar.
+     * {@inheritDoc}
      */
     @Override
     public Matrix scalarMultiply(double d) {
@@ -381,11 +362,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     }
 
     /**
-     * Adds a scalar value to each element of this matrix and returns a new
-     * matrix. The operation does not modify the original matrix.
-     *
-     * @param d the scalar value to add to each element.
-     * @return a new matrix with the scalar value added to each element.
+     * {@inheritDoc}
      */
     @Override
     public Matrix scalarAdd(double d) {
@@ -396,7 +373,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
 
     /**
      * Inserts anther matrix into this matrix at the given index.
-     *
+     * 
      * @param other The matrix to be inserted
      * @param row the row in this matrix where the first row of the other matrix
      * is inserted.
@@ -415,9 +392,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     }
 
     /**
-     * Returns a string representation of the matrix.
-     *
-     * @return The string representation of the matrix.
+     * {@inheritDoc}
      */
     @Override
     public String toString() {
@@ -441,16 +416,11 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     }
 
     /**
-     * Gets the element at the specified row and column. Note, this is pretty
-     * slow.
-     *
-     * @param row The row index.
-     * @param column The column index.
-     * @return The element at the specified row and column.
+     * {@inheritDoc}
      */
     @Override
     public double getEntry(int row, int column) {
-        return data.get(index(row, column)).getVal();
+        return data.get(index(row, column)).getVal(handle);
 
     }
 
@@ -490,20 +460,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     }
 
     /**
-     * Copies a submatrix defined by the specified rows and columns into a
-     * destination 2D array. The submatrix is taken from this matrix and placed
-     * in the destination array.
-     *
-     * @param startRow the starting row index of the submatrix (inclusive).
-     * @param endRow the ending row index of the submatrix (exclusive).
-     * @param startColumn the starting column index of the submatrix
-     * (inclusive).
-     * @param endColumn the ending column index of the submatrix (exclusive).
-     * @param destination the array into which the submatrix is copied.
-     * @throws OutOfRangeException if the specified indices are out of bounds.
-     * @throws NumberIsTooSmallException if the submatrix size is too small.
-     * @throws MatrixDimensionMismatchException if the destination array
-     * dimensions do not match the submatrix dimensions.
+     * {@inheritDoc}
      */
     @Override
     public void copySubMatrix(int startRow, int endRow, int startColumn, int endColumn, double[][] destination) throws OutOfRangeException, NumberIsTooSmallException, MatrixDimensionMismatchException {
@@ -520,18 +477,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     }
 
     /**
-     * Returns a submatrix from the specified row and column range. This method
-     * passes by reference, meaning changes to the new matrix will affect this
-     * matrix and vice versa.
-     *
-     * @param startRow the starting row index (inclusive).
-     * @param endRow the ending row index (exclusive).
-     * @param startColumn the starting column index (inclusive).
-     * @param endColumn the ending column index (exclusive).
-     * @return a new matrix representing the submatrix.
-     * @throws OutOfRangeException if the indices are out of bounds.
-     * @throws NumberIsTooSmallException if the submatrix dimensions are
-     * invalid.
+     * {@inheritDoc}
      */
     @Override
     public Matrix getSubMatrix(int startRow, int endRow, int startColumn, int endColumn) throws OutOfRangeException, NumberIsTooSmallException {
@@ -592,14 +538,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     }
 
     /**
-     * Returns a submatrix defined by the specified row and column indices.
-     *
-     * @param selectedRows the indices of the rows to include.
-     * @param selectedColumns the indices of the columns to include.
-     * @return a new matrix representing the submatrix.
-     * @throws NullArgumentException if any argument is null.
-     * @throws NoDataException if the selected rows or columns are empty.
-     * @throws OutOfRangeException if any row or column index is out of bounds.
+     * {@inheritDoc}
      */
     @Override
     public Matrix getSubMatrix(int[] selectedRows, int[] selectedColumns) throws NullArgumentException, NoDataException, OutOfRangeException {
@@ -623,12 +562,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     }
 
     /**
-     * Sets the submatrix at the specified row and column position to the given
-     * 2D array values.
-     *
-     * @param subMatrix the 2D array representing the submatrix.
-     * @param row the starting row index.
-     * @param column the starting column index.
+     * {@inheritDoc}
      */
     @Override
     public void setSubMatrix(double[][] subMatrix, int row, int column) {
@@ -669,13 +603,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     }
 
     /**
-     * Creates a new matrix with the specified dimensions.
-     *
-     * @param height the number of rows.
-     * @param width the number of columns.
-     * @return a new matrix with the specified dimensions.
-     * @throws NotStrictlyPositiveException if the row or column dimension is
-     * not positive.
+     * {@inheritDoc}
      */
     @Override
     public Matrix createMatrix(int height, int width) throws NotStrictlyPositiveException {
@@ -684,11 +612,9 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
 
         return new Matrix(height, width, handle);
     }
-
+    
     /**
-     * Creates a deep copy of this matrix.
-     *
-     * @return a new matrix that is a copy of this matrix.
+     * {@inheritDoc}
      */
     @Override
     public Matrix copy() {
@@ -703,9 +629,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     }
 
     /**
-     * Returns the number of rows in this matrix.
-     *
-     * @return the number of rows.
+     * {@inheritDoc}
      */
     @Override
     public int getRowDimension() {
@@ -713,9 +637,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     }
 
     /**
-     * Returns the number of columns in this matrix.
-     *
-     * @return the number of columns.
+     * {@inheritDoc}
      */
     @Override
     public int getColumnDimension() {
@@ -723,11 +645,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     }
 
     /**
-     * Sets the entry at the specified row and column to the given value.
-     *
-     * @param row the row index.
-     * @param column the column index.
-     * @param value the value to set at the specified position.
+     * {@inheritDoc}
      */
     @Override
     public void setEntry(int row, int column, double value) {
@@ -735,12 +653,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     }
 
     /**
-     * Returns the row as a new matrix. This method passes by reference, meaning
-     * changes to the row matrix will affect this matrix.
-     *
-     * @param row the index of the row to retrieve.
-     * @return a new matrix representing the row.
-     * @throws OutOfRangeException if the row index is out of bounds.
+     * {@inheritDoc}
      */
     @Override
     public Matrix getRowMatrix(int row) throws OutOfRangeException {
@@ -758,11 +671,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     }
 
     /**
-     * Returns the row at the specified index as an array of doubles.
-     *
-     * @param row the row index.
-     * @return an array of doubles representing the row.
-     * @throws OutOfRangeException if the row index is out of bounds.
+     * {@inheritDoc}
      */
     @Override
     public double[] getRow(int row) throws OutOfRangeException {
@@ -770,13 +679,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     }
 
     /**
-     * Returns the row at the specified index as an array of doubles, using the
-     * specified handle.
-     *
-     * @param row the row index.
-     * @param handle the handle used for retrieving the row.
-     * @return an array of doubles representing the row.
-     * @throws OutOfRangeException if the row index is out of bounds.
+     @see Matrix#getRow(int) 
      */
     public double[] getRow(int row, Handle handle) throws OutOfRangeException {
         if (row < 0 || row >= height)
@@ -787,28 +690,19 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
         double[] rowData = rowCopy.data.get(handle);
         rowCopy.close();
         return rowData;
-
     }
 
     /**
-     * Returns the row at the specified index as a RealVector.
-     *
-     * @param row the row index.
-     * @return a RealVector representing the row.
-     * @throws OutOfRangeException if the row index is out of bounds.
+     * {@inheritDoc}
      */
     @Override
     public Vector getRowVector(int row) throws OutOfRangeException {//TODO: create a GPU vector class.
 
-        return new Vector(data.subArray(row), colDist, handle);
+        return new Vector(handle, data.subArray(row), colDist);
     }
 
     /**
-     * Returns the column at the specified index as an array of doubles.
-     *
-     * @param column the column index.
-     * @return an array of doubles representing the column.
-     * @throws OutOfRangeException if the column index is out of bounds.
+     * {@inheritDoc}
      */
     @Override
     public double[] getColumn(int column) throws OutOfRangeException {
@@ -819,13 +713,10 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     }
 
     /**
-     * Returns the column as a new matrix. This method passes by reference,
+     * This method passes by reference,
      * meaning changes to the column matrix will affect this matrix and vice
      * versa.
-     *
-     * @param column the index of the column to retrieve.
-     * @return a new matrix representing the column.
-     * @throws OutOfRangeException if the column index is out of bounds.
+     * {@inheritDoc}
      */
     @Override
     public Matrix getColumnMatrix(int column) throws OutOfRangeException {
@@ -835,26 +726,20 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
                 1,
                 handle
         );
-
     }
 
+    
     /**
-     * Returns the column at the specified index as a RealVector.
-     *
-     * @param column the column index.
-     * @return a RealVector representing the column.
-     * @throws OutOfRangeException if the column index is out of bounds.
+     * {@inheritDoc}
      */
     @Override
     public Vector getColumnVector(int column) throws OutOfRangeException {
-        return new Vector(data.subArray(index(0, column), height), 1, handle);
+        return new Vector(handle, data.subArray(index(0, column), height), 1);
     }
 
+    
     /**
-     * Returns the data of this matrix as a 2D array. Each column of the matrix
-     * is copied into the corresponding element of the array.
-     *
-     * @return a 2D array representing the matrix data.
+     * {@inheritDoc}
      */
     @Override
     public double[][] getData() {
@@ -864,24 +749,18 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     }
 
     /**
-     * Returns the trace (sum of the diagonal elements) of the matrix. This
-     * operation only applies to square matrices.
-     *
-     * @return the trace of the matrix.
-     * @throws NonSquareMatrixException if the matrix is not square.
+     * {@inheritDoc}
      */
     @Override
     public double getTrace() throws NonSquareMatrixException {
         if (!isSquare()) throw new NonSquareMatrixException(width, height);
 
-        return data.dot(handle, new DSingleton(1, handle), 0, width + 1);
+        return data.dot(handle, new DSingleton(handle, 1), 0, width + 1);
     }
 
+    
     /**
-     * Returns the hash code of this matrix. The hash code is computed using the
-     * data of the matrix.
-     *
-     * @return the hash code of the matrix.
+     * {@inheritDoc}
      */
     @Override
     public int hashCode() {
@@ -889,7 +768,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     }
 
     /**
-     * Created a matrix from a doulbe[] representing a column vector.
+     * Created a matrix from a double[] representing a column vector.
      *
      * @param vec The column vector.
      * @param handle
@@ -902,12 +781,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     }
 
     /**
-     * Multiplies this matrix by a vector and returns the resulting vector.
-     *
-     * @param v the vector to be multiplied.
-     * @return the resulting vector as an array of doubles.
-     * @throws DimensionMismatchException if the vector length does not match
-     * the number of columns.
+     * {@inheritDoc}
      */
     @Override
     public double[] operate(double[] v) throws DimensionMismatchException {
@@ -925,13 +799,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     }
 
     /**
-     * Multiplies this matrix by a RealVector and returns the resulting
-     * RealVector.
-     *
-     * @param v the vector to be multiplied.
-     * @return the resulting RealVector.
-     * @throws DimensionMismatchException if the vector length does not match
-     * the number of columns.
+     * {@inheritDoc}
      */
     @Override
     public Vector operate(RealVector v) throws DimensionMismatchException {
@@ -941,16 +809,10 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     }
     
     /**
-     * Multiplies this matrix by a RealVector and returns the resulting
-     * RealVector.
-     *
-     * @param v the vector to be multiplied.
-     * @return the resulting RealVector.
-     * @throws DimensionMismatchException if the vector length does not match
-     * the number of columns.
+     * @see Matrix#operate(org.apache.commons.math3.linear.RealVector) 
      */
     public Vector operate(Vector v) throws DimensionMismatchException {
-        Vector result = new Vector(height, handle);
+        Vector result = new Vector(handle, height);
         result.data.multMatVec(handle, false, height, width, 1, data, colDist, v.data, v.inc, 1, 1);
         return result;
     }
@@ -966,20 +828,14 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
 
         Matrix ident = new Matrix(n, n, hand);
         ident.data.fill0(hand);
-        try (DSingleton one = new DSingleton(1, hand)) {
+        try (DSingleton one = new DSingleton(hand, 1)) {
             ident.data.addToMe(hand, 1, one, 0, n + 1);
         }
         return ident;
     }
 
     /**
-     * Returns the matrix raised to the power of p. This operation only applies
-     * to square matrices.
-     *
-     * @param p the positive exponent to which the matrix is raised.
-     * @return the resulting matrix.
-     * @throws NotPositiveException if the exponent is negative.
-     * @throws NonSquareMatrixException if the matrix is not square.
+     * {@inheritDoc}
      */
     @Override
     public Matrix power(int p) throws NotPositiveException, NonSquareMatrixException {
@@ -995,13 +851,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     }
 
     /**
-     * Sets the specified column of the matrix to the values in the given array.
-     *
-     * @param column the column index.
-     * @param array the array of values to set.
-     * @throws OutOfRangeException if the column index is out of bounds.
-     * @throws MatrixDimensionMismatchException if the length of the array does
-     * not match the number of rows.
+     * {@inheritDoc}
      */
     @Override
     public void setColumn(int column, double[] array) throws OutOfRangeException, MatrixDimensionMismatchException {
@@ -1012,15 +862,9 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
         data.set(handle, array, index(0, column));
     }
 
+    
     /**
-     * Sets the specified column of the matrix to the values in the given
-     * RealMatrix.
-     *
-     * @param column the column index.
-     * @param matrix the RealMatrix to set as the column.
-     * @throws OutOfRangeException if the column index is out of bounds.
-     * @throws MatrixDimensionMismatchException if the matrix dimensions do not
-     * match the column size.
+     * {@inheritDoc}
      */
     public void setColumnMatrix(int column, Matrix matrix) throws OutOfRangeException, MatrixDimensionMismatchException {
         checkCol(column);
@@ -1031,29 +875,16 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     }
 
     /**
-     * Sets the specified column of the matrix to the values in the given
-     * RealMatrix.
-     *
-     * @param column the column index.
-     * @param matrix the RealMatrix to set as the column.
-     * @throws OutOfRangeException if the column index is out of bounds.
-     * @throws MatrixDimensionMismatchException if the matrix dimensions do not
-     * match the column size.
+     * {@inheritDoc}
      */
     @Override
     public void setColumnMatrix(int column, RealMatrix matrix) throws OutOfRangeException, MatrixDimensionMismatchException {
         setColumn(column, matrix.getColumn(0));
     }
 
+    
     /**
-     * Sets the specified column of the matrix to the values in the given
-     * RealVector.
-     *
-     * @param column the column index.
-     * @param vector the RealVector to set as the column.
-     * @throws OutOfRangeException if the column index is out of bounds.
-     * @throws MatrixDimensionMismatchException if the vector length does not
-     * match the number of rows.
+     * {@inheritDoc}
      */
     @Override
     public void setColumnVector(int column, RealVector vector) throws OutOfRangeException, MatrixDimensionMismatchException {
@@ -1062,27 +893,14 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     
     
     /**
-     * Sets the specified column of the matrix to the values in the given
-     * RealVector.
-     *
-     * @param column the column index.
-     * @param vector the RealVector to set as the column.
-     * @throws OutOfRangeException if the column index is out of bounds.
-     * @throws MatrixDimensionMismatchException if the vector length does not
-     * match the number of rows.
+     * @see Matrix#setColumnVector(int, org.apache.commons.math3.linear.RealVector) 
      */
     public void setColumnVector(int column, Vector vector) throws OutOfRangeException, MatrixDimensionMismatchException {
         data.set(handle, vector.data, index(0, column), 0, 0, vector.inc, Math.min(height, vector.getDimension()));
     }
 
     /**
-     * Sets the specified row of the matrix to the values in the given array.
-     *
-     * @param row the row index.
-     * @param array the array of values to set.
-     * @throws OutOfRangeException if the row index is out of bounds.
-     * @throws MatrixDimensionMismatchException if the length of the array does
-     * not match the number of columns.
+     * {@inheritDoc}
      */
     @Override
     public void setRow(int row, double[] array) throws OutOfRangeException, MatrixDimensionMismatchException {
@@ -1096,26 +914,14 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     }
 
     /**
-     * Sets the row.
-     *
-     * @param row The index of the row to be set.
-     * @param rowMatrix The new values for the row.
-     * @throws OutOfRangeException If the row index is illegal.
-     * @throws MatrixDimensionMismatchException If the rowMatrix is the wrong
-     * size.
+     * @see Matrix#setRowMatrix(int, org.apache.commons.math3.linear.RealMatrix) 
      */
     public void setRowMatrix(int row, Matrix rowMatrix) throws OutOfRangeException, MatrixDimensionMismatchException {
         insert(rowMatrix, row, 0);
     }
 
     /**
-     * Sets the row of the matrix using data from another RealMatrix object.
-     *
-     * @param row the index of the row to set
-     * @param matrix the RealMatrix object containing the data for the row
-     * @throws OutOfRangeException if the row index is out of range
-     * @throws MatrixDimensionMismatchException if the row length does not match
-     * the matrix width
+     * {@inheritDoc}
      */
     @Override
     public void setRowMatrix(int row, RealMatrix matrix) throws OutOfRangeException, MatrixDimensionMismatchException {
@@ -1123,13 +929,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     }
 
     /**
-     * Sets the row of the matrix using data from a RealVector object.
-     *
-     * @param row the index of the row to set
-     * @param vector the RealVector object containing the data for the row
-     * @throws OutOfRangeException if the row index is out of range
-     * @throws MatrixDimensionMismatchException if the row length does not match
-     * the matrix width
+     * {@inheritDoc}
      */
     @Override
     public void setRowVector(int row, RealVector vector) throws OutOfRangeException, MatrixDimensionMismatchException {
@@ -1137,22 +937,14 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     }
     
     /**
-     * Sets the row of the matrix using data from a RealVector object.
-     *
-     * @param row the index of the row to set
-     * @param vector the RealVector object containing the data for the row
-     * @throws OutOfRangeException if the row index is out of range
-     * @throws MatrixDimensionMismatchException if the row length does not match
-     * the matrix width
+     * @see Matrix#setRowVector(int, org.apache.commons.math3.linear.RealVector) 
      */
     public void setRowVector(int row, Vector vector) throws OutOfRangeException, MatrixDimensionMismatchException {
         data.set(handle, vector.data, index(row, 0), 0, colDist, vector.inc, Math.min(width, vector.getDimension()));
     }
 
     /**
-     * Transposes the current matrix.
-     *
-     * @return a new Matrix object that is the transpose of this matrix
+     * {@inheritDoc}
      */
     @Override
     public Matrix transpose() {
@@ -1164,15 +956,13 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     }
 
     /**
-     * Applies a RealMatrixChangingVisitor to the matrix elements in
-     * column-major order. This method does not use the gpu and is slow.
-     *
-     * @param visitor the visitor that will modify the matrix elements
-     * @return the result of the visitor's end() method
+     * {@inheritDoc}
      */
     @Override
     public double walkInColumnOrder(RealMatrixChangingVisitor visitor) {
         double[] matrix = data.get(handle);
+        
+        visitor.start(height, width, 0, height, 0, width);
 
         Arrays.setAll(matrix, i -> visitor.visit(rowIndex(i), columnIndex(i), matrix[i]));
 
@@ -1182,15 +972,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     }
 
     /**
-     * Applies a RealMatrixChangingVisitor to a submatrix in column-major order.
-     * This method does not use the gpu and is slow.
-     *
-     * @param visitor the visitor that will modify the matrix elements
-     * @param startRow the starting row of the submatrix
-     * @param endRow the ending row of the submatrix
-     * @param startColumn the starting column of the submatrix
-     * @param endColumn the ending column of the submatrix
-     * @return the result of the visitor's end() method
+     * {@inheritDoc}
      */
     @Override
     public double walkInColumnOrder(RealMatrixChangingVisitor visitor, int startRow, int endRow, int startColumn, int endColumn) {
@@ -1211,12 +993,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     }
 
     /**
-     * Applies a RealMatrixChangingVisitor to the matrix elements in an
-     * optimized order (currently column-major order). This method does not use
-     * the gpu and is slow.
-     *
-     * @param visitor the visitor that will modify the matrix elements
-     * @return the result of the visitor's end() method
+     * {@inheritDoc}
      */
     @Override
     public double walkInOptimizedOrder(RealMatrixChangingVisitor visitor) {
@@ -1225,16 +1002,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     }
 
     /**
-     * Applies a RealMatrixChangingVisitor to a submatrix in an optimized order
-     * (currently column-major order). This method does not use the gpu and is
-     * slow.
-     *
-     * @param visitor the visitor that will modify the matrix elements
-     * @param startRow the starting row of the submatrix
-     * @param endRow the ending row of the submatrix
-     * @param startColumn the starting column of the submatrix
-     * @param endColumn the ending column of the submatrix
-     * @return the result of the visitor's end() method
+     * {@inheritDoc}
      */
     @Override
     public double walkInOptimizedOrder(RealMatrixChangingVisitor visitor, int startRow, int endRow, int startColumn, int endColumn) {
@@ -1243,11 +1011,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     }
 
     /**
-     * Applies a RealMatrixPreservingVisitor to the matrix elements in
-     * column-major order. This method does not use the gpu and is slow.
-     *
-     * @param visitor the visitor that will read the matrix elements
-     * @return the result of the visitor's end() method
+     * {@inheritDoc}
      */
     @Override
     public double walkInOptimizedOrder(RealMatrixPreservingVisitor visitor) {
@@ -1255,12 +1019,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     }
 
     /**
-     * Applies a RealMatrixChangingVisitor to the matrix elements in row-major
-     * order. This method is very slow. Column major is faster than this, but is
-     * still slow.
-     *
-     * @param visitor the visitor that will modify the matrix elements
-     * @return the result of the visitor's end() method
+     * {@inheritDoc}
      */
     @Override
     public double walkInRowOrder(RealMatrixChangingVisitor visitor) {
@@ -1272,17 +1031,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     }
 
     /**
-     * Applies a RealMatrixChangingVisitor to a submatrix in row-major order.
-     * This method is in a bad order and does not use the gpu. It is very slow.
-     *
-     * @param visitor the visitor that will modify the submatrix elements
-     * @param startRow the starting row of the submatrix
-     * @param endRow the ending row of the submatrix
-     * @param startColumn the starting column of the submatrix
-     * @param endColumn the ending column of the submatrix
-     * @return the result of the visitor's end() method
-     * @throws OutOfRangeException if the row or column indices are out of range
-     * @throws NumberIsTooSmallException if the submatrix dimensions are invalid
+     * {@inheritDoc}
      */
     @Override
     public double walkInRowOrder(RealMatrixChangingVisitor visitor, int startRow, int endRow, int startColumn, int endColumn) throws OutOfRangeException, NumberIsTooSmallException {
@@ -1295,16 +1044,13 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     }
 
     /**
-     * Applies a RealMatrixPreservingVisitor to the matrix elements in
-     * column-major order. This method does not use the gpu and is slow.
-     *
-     * @param visitor the visitor that will read the matrix elements
-     * @return the result of the visitor's end() method
+     * {@inheritDoc}
      */
     @Override
     public double walkInColumnOrder(RealMatrixPreservingVisitor visitor) {
         double[] matrix = data.get(handle);
 
+        visitor.start(height, width, 0, height, 0, width);
         for (int i = 0; i < matrix.length; i++)
             visitor.visit(i / width, i % width, matrix[i]);
 
@@ -1312,17 +1058,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     }
 
     /**
-     * Applies a RealMatrixPreservingVisitor to a submatrix in column-major
-     * order. This method does not use the gpu and is slow.
-     *
-     * @param visitor the visitor that will read the submatrix elements
-     * @param startRow the starting row of the submatrix
-     * @param endRow the ending row of the submatrix
-     * @param startColumn the starting column of the submatrix
-     * @param endColumn the ending column of the submatrix
-     * @return the result of the visitor's end() method
-     * @throws OutOfRangeException if the row or column indices are out of range
-     * @throws NumberIsTooSmallException if the submatrix dimensions are invalid
+     * {@inheritDoc}
      */
     @Override
     public double walkInColumnOrder(RealMatrixPreservingVisitor visitor, int startRow, int endRow, int startColumn, int endColumn) throws OutOfRangeException, NumberIsTooSmallException {
@@ -1330,6 +1066,8 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
 
         double[] matrix = new double[sub.width * sub.height];
 
+        visitor.start(height, width, 0, height, 0, width);
+        
         for (int toCol = 0; toCol <= sub.width; toCol++)
             data.get(handle, matrix, toCol * sub.height, index(0, toCol + startColumn), sub.height);
 
@@ -1340,17 +1078,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     }
 
     /**
-     * Applies a RealMatrixPreservingVisitor to a submatrix in column-major
-     * order. This method does not use the gpu and is slow.
-     *
-     * @param visitor the visitor that will read the submatrix elements
-     * @param startRow the starting row of the submatrix
-     * @param endRow the ending row of the submatrix
-     * @param startColumn the starting column of the submatrix
-     * @param endColumn the ending column of the submatrix
-     * @return the result of the visitor's end() method
-     * @throws OutOfRangeException if the row or column indices are out of range
-     * @throws NumberIsTooSmallException if the submatrix dimensions are invalid
+     * {@inheritDoc}
      */
     @Override
     public double walkInOptimizedOrder(RealMatrixPreservingVisitor visitor, int startRow, int endRow, int startColumn, int endColumn) throws OutOfRangeException, NumberIsTooSmallException {
@@ -1358,11 +1086,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     }
 
     /**
-     * Throws an UnsupportedOperationException since this matrix is column-major
-     * and cannot be walked in row-major order.
-     *
-     * @param visitor the visitor that will attempt to read the matrix elements
-     * @throws UnsupportedOperationException if row-major order is requested
+     * {@inheritDoc}
      */
     @Override
     public double walkInRowOrder(RealMatrixPreservingVisitor visitor) {
@@ -1370,16 +1094,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     }
 
     /**
-     * Throws an UnsupportedOperationException since this matrix is column-major
-     * and cannot be walked in row-major order.
-     *
-     * @param visitor the visitor that will attempt to read the submatrix
-     * elements
-     * @param startRow the starting row of the submatrix
-     * @param endRow the ending row of the submatrix
-     * @param startColumn the starting column of the submatrix
-     * @param endColumn the ending column of the submatrix
-     * @throws UnsupportedOperationException if row-major order is requested
+     * {@inheritDoc}
      */
     @Override
     public double walkInRowOrder(RealMatrixPreservingVisitor visitor, int startRow, int endRow, int startColumn, int endColumn) throws OutOfRangeException, NumberIsTooSmallException {
@@ -1391,19 +1106,16 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     }
 
     /**
-     * Computes the Frobenius norm of the matrix. The Frobenius norm is
-     * calculated as the square root of the sum of the absolute squares of the
-     * matrix's elements.
-     *
-     * @return The Frobenius norm of the matrix.
-     *
      * <p>
      * If the matrix is stored in column-major order with a column distance
      * equal to the matrix height, the operation is performed on the current
      * matrix. Otherwise, a copy of the matrix is created and the operation is
      * performed on the copy.
      * </p>
+     * 
+     * {@inheritDoc}
      */
+
     @Override
     public double getFrobeniusNorm() {
         Matrix copy = colDist == height ? this : copy();
@@ -1429,7 +1141,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     }
 
     /**
-     * Frees resources.
+     * {@inheritDoc}
      */
     @Override
     public void close() {
