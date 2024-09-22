@@ -29,7 +29,7 @@ public class DSingleton extends DArray{
     /**
      * Creates a singleton from a cpu element.
      * @param d The element in the singleton.
-     * @param hand
+     * @param hand The handle.
      */
     public DSingleton(Handle hand, double d){
         super(hand, d);

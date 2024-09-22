@@ -6,7 +6,7 @@ import jcuda.jcublas.JCublas;
 import jcuda.runtime.JCuda;
 
 /**
- *
+ * Computer wide GPU properties and set up.
  * @author E. Dov Neimand
  */
 public class GPU {

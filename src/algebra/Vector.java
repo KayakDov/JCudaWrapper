@@ -26,7 +26,7 @@ import storage.DSingleton;
  */
 public class Vector extends RealVector implements AutoCloseable {
 
-    final DArray data;  // Underlying array for GPU-based operations
+    public final DArray data;  // Underlying array for GPU-based operations
     private final Handle handle; // JCublas handle for GPU operations
     final int inc;
 
@@ -670,10 +670,11 @@ public class Vector extends RealVector implements AutoCloseable {
     }
 
     /**
+     * @param v The vector with which this one is creating an outer product.
      * @see Vector#outerProduct(org.apache.commons.math3.linear.RealVector)
      */
     public Matrix outerProduct(Vector v) {
-        Matrix outerProd = new Matrix(getDimension(), v.getDimension(), handle);
+        Matrix outerProd = new Matrix(handle, getDimension(), v.getDimension());
         outerProd.data.outerProd(handle, getDimension(), v.getDimension(), 1, data, inc, v.data, v.inc);
         return outerProd;
     }
@@ -1002,5 +1003,27 @@ public class Vector extends RealVector implements AutoCloseable {
 
         // Complete the walk
         return walker.end();
+    }
+    
+    /**
+     * Creates a vertical matrix from this vector.  Note, this method only works
+     * if the stride increment is 1.  Otherwise an exception is thrown.
+     * 
+     * If a vertical matrix is desired for a stride increment that's not one, 
+     * create a horizontal matrix and transpose it.
+     * 
+     * @return A vertical matrix representing this vector.
+     */
+    public Matrix vertical(){
+        if(inc != 1) throw new RuntimeException("The stride increment must be one.");
+        return new Matrix(handle, data, getDimension(), 1);
+    }
+    
+    /**
+     * Creates a horizontal matrix from this vector.
+     * @return A horizontal matrix from this vector.
+     */
+    public Matrix horizontal(){
+        return new Matrix(handle, data, 1, getDimension(), inc);
     }
 }

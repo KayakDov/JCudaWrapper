@@ -4,6 +4,7 @@ import processSupport.Handle;
 import java.util.Arrays;
 import jcuda.Pointer;
 import jcuda.Sizeof;
+import jcuda.cudaDataType;
 import jcuda.driver.CUdeviceptr;
 import jcuda.driver.CUfunction;
 import jcuda.driver.CUmodule;
@@ -11,12 +12,9 @@ import jcuda.driver.JCudaDriver;
 import jcuda.jcublas.JCublas2;
 import jcuda.jcublas.cublasDiagType;
 import jcuda.jcublas.cublasFillMode;
-import jcuda.jcublas.cublasHandle;
+import jcuda.jcublas.cublasGemmAlgo;
 import jcuda.jcublas.cublasOperation;
 import jcuda.runtime.JCuda;
-import jcuda.runtime.cudaError;
-import jcuda.runtime.cudaMemcpyKind;
-import jcuda.runtime.cudaStream_t;
 
 /**
  * This class provides functionalities to create and manipulate double arrays on
@@ -92,7 +90,16 @@ public class DArray extends Array {
      */
     public static void copy(Handle handle, DArray to, double[] fromArray, int toIndex, int fromIndex, int length) {
         checkNull(fromArray, to);
-        Array.copy(handle, to, Pointer.to(fromArray), toIndex, fromIndex, length, PrimitiveType.DOUBLE);
+        
+        Array.copy(
+                handle, 
+                to, 
+                Pointer.to(fromArray), 
+                toIndex, 
+                fromIndex, 
+                length, 
+                PrimitiveType.DOUBLE
+        );
     }
 
     /**
@@ -102,7 +109,7 @@ public class DArray extends Array {
      * @param toStart The index in the destination array to start copying to.
      * @param fromStart The index in this array to start copying from.
      * @param length The number of elements to copy.
-     * @param handle
+     * @param handle The handle.
      * @throws IllegalArgumentException if any index is out of bounds or length
      * is negative.
      */
@@ -203,7 +210,7 @@ public class DArray extends Array {
     /**
      * Copies a CPU array to this GPU array starting from a specified index.
      *
-     * @param handle
+     * @param handle The handle.
      * @param from The source CPU array.
      * @param toIndex The index in this GPU array to start copying to.
      * @throws IllegalArgumentException if from is null.
@@ -218,7 +225,7 @@ public class DArray extends Array {
      *
      * @param start The beginning of the sub array.
      * @param length The length of the sub array.
-     * @return
+     * @return A sub Array.
      */
     public DArray subArray(int start, int length) {
         checkPos(start, length);
@@ -231,7 +238,7 @@ public class DArray extends Array {
      * array will go to the end of this array.
      *
      * @param start The beginning of the sub array.
-     * @return
+     * @return A sub array.
      */
     public DArray subArray(int start) {
         checkPos(start);
@@ -398,7 +405,6 @@ public class DArray extends Array {
         JCublas2.cublasDnrm2(handle.get(), length, pointer, inc, Pointer.to(result).withByteOffset(toIndex * Sizeof.DOUBLE));
     }
 
-
     /**
      * Finds the index of the element with the minimum absolute value in the
      * vector X:
@@ -419,7 +425,7 @@ public class DArray extends Array {
         JCublas2.cublasIdamin(handle.get(), length, pointer, inc, Pointer.to(result).withByteOffset(toIndex * Sizeof.INT));
         result[toIndex] -= 1;//It looks like the cuda methods are index-1 based.
     }
-    
+
     /**
      * Finds the index of the element with the maximum absolute value in the
      * vector X:
@@ -439,7 +445,7 @@ public class DArray extends Array {
         checkNull(handle, result);
         JCublas2.cublasIdamax(handle.get(), length, pointer, inc, Pointer.to(result).withByteOffset(toIndex * Sizeof.INT));
         result[toIndex] -= 1; //It looks like the cuda methods are index-1 based.
-    }    
+    }
 
     /**
      * Finds the index of the element with the minimum absolute value in the
@@ -506,7 +512,7 @@ public class DArray extends Array {
         handle.synch();
         return result[0];
     }
-    
+
     /**
      * Computes the sum of the absolute values of the vector X (1-norm):
      *
@@ -833,7 +839,13 @@ public class DArray extends Array {
         checkLowerBound(height, lda);
         checkAgainstLength(height * width - 1);
 
-        if (height == lda) return fill(handle, fill, 1);
+        if (height == lda) {
+            if(fill == 0) {
+                subArray(0, width*height).fill0(handle);
+                return this;
+            }
+            return subArray(0, width*height).fill(handle, fill, 1);            
+        }
 
         try (DArray filler = DArray.empty(width * height).fill(handle, fill, 1)) {
 
@@ -851,6 +863,7 @@ public class DArray extends Array {
      * </pre>
      *
      * This method synchronizes the handle.
+     *
      * @param handle handle to the cuBLAS library context.
      * @param incX The number of spaces to jump when incrementing forward
      * through x.
@@ -865,8 +878,7 @@ public class DArray extends Array {
         handle.synch();
         return result[0];
     }
-    
-    
+
     /**
      * Computes the dot product of two vectors:
      *
@@ -881,12 +893,12 @@ public class DArray extends Array {
      * this array.
      * @param x Pointer to vector X in GPU memory.
      * @param result The array the answer should be put in.
-     * @param resultInd The index of the array the answer should be put in.     
+     * @param resultInd The index of the array the answer should be put in.
      */
     public void dot(Handle handle, DArray x, int incX, int inc, double[] result, int resultInd) {
         checkNull(handle, x, result);
         checkPos(resultInd, inc, incX);
-        JCublas2.cublasDdot(handle.get(), length, x.pointer, incX, pointer, inc, Pointer.to(result).withByteOffset(resultInd*Sizeof.DOUBLE));
+        JCublas2.cublasDdot(handle.get(), length, x.pointer, incX, pointer, inc, Pointer.to(result).withByteOffset(resultInd * Sizeof.DOUBLE));
 
     }
 
@@ -1058,52 +1070,89 @@ public class DArray extends Array {
     }
 
     /**
-     * Runs the find_max kernel to find the maximum value and its index in the
-     * input array.
+     * Performs batched matrix-matrix multiplication:
      *
-     * @param result Pointer to store the result on the device.
-     * @param handle CUDA stream to run the kernel.
+     * <pre>
+     * Result[i] = alpha * op(A[i]) * op(B[i]) + timesResult * Result[i]
+     * </pre>
+     *
+     * Where op(A) and op(B) can be A and B or their transposes.
+     *
+     * This method computes multiple matrix-matrix multiplications at once,
+     * using strided data access, allowing for efficient batch processing.
+     *
+     * @param handle Handle to the cuBLAS library context.
+     * @param transA True if matrix A should be transposed, false otherwise.
+     * @param transB True if matrix B should be transposed, false otherwise.
+     * @param aRows The number of rows in matrix A.
+     * @param aColsBRows The number of columns in matrix A and the number of
+     * rows in matrix B.
+     * @param bCols The number of columns in matrix B.
+     * @param timesAB Scalar multiplier applied to the matrix-matrix product.
+     * @param matA Pointer to the batched matrix A in GPU memory.
+     * @param lda Leading dimension of matrix A (the number of elements between
+     * consecutive columns in memory).
+     * @param strideA Stride between consecutive matrices A in memory (number of
+     * elements).
+     * @param matB Pointer to the batched matrix B in GPU memory.
+     * @param ldb Leading dimension of matrix B (the number of elements between
+     * consecutive columns in memory).
+     * @param strideB Stride between consecutive matrices B in memory (number of
+     * elements).
+     * @param timesResult Scalar multiplier applied to each result matrix before
+     * adding the matrix-matrix product.
+     * @param result Pointer to the batched output matrix (result) in GPU
+     * memory.
+     * @param ldResult Leading dimension of the result matrix (the number of
+     * elements between consecutive columns in memory).
+     * @param strideResult Stride between consecutive result matrices in memory
+     * (number of elements).
+     * @param batchCount The number of matrix-matrix multiplications to compute.
+     *
      */
-    
-    public void runFindMax(DArray result, Handle handle) {
-        // Define kernel parameters
-        int BLOCK_SIZE = 256;
-        
-        int numBlocks = (length + BLOCK_SIZE - 1) / BLOCK_SIZE;
-        int sharedMemSize = BLOCK_SIZE * Sizeof.FLOAT;
+    public static void multMatMatBatched(Handle handle, boolean transA, boolean transB,
+            int aRows, int aColsBRows, int bCols, double timesAB, DArray matA,
+            int lda, long strideA, DArray matB, int ldb, long strideB, double timesResult,
+            DArray result, int ldResult, long strideResult, int batchCount) {
 
-        // Load the PTX file and get the kernel function
-        CUmodule module = new CUmodule();
-        JCudaDriver.cuModuleLoad(module, "find_max.ptx");
-        CUfunction function = new CUfunction();
-        JCudaDriver.cuModuleGetFunction(function, module, "find_maximum_kernel");
+        // Null checks for pointers
+        checkNull(handle, matA, matB, result);
 
-        Pointer mutex = Array.empty(1, PrimitiveType.INT);
-        JCuda.cudaMemsetAsync(mutex, 0, Sizeof.INT, handle.getStream());
-        
-        // Launch the kernel
-        JCudaDriver.cuLaunchKernel(
-            function,                  // Kernel function
-            numBlocks, 1, 1,           // Grid dimensions
-            BLOCK_SIZE, 1, 1,          // Block dimensions
-            sharedMemSize,             // Shared memory size
-            null,                      // Stream (null for default)
-            Pointer.to(
-                pointer,                // Input array
-                result.pointer,                  // Pointer to the max result
-                mutex,                // Mutex for synchronization
-                Pointer.to(new int[]{length})            // Array size
-            ),
-            null                       // Kernel extra arguments (if any)
+        // Ensure dimensions and leading dimensions are positive
+        checkPos(aRows, bCols, ldb, ldResult);
+
+        // Ensure matrices are valid for the specified batch count
+        matA.checkAgainstLength(aRows * aColsBRows * batchCount);
+        matB.checkAgainstLength(aColsBRows * bCols * batchCount);
+        result.checkAgainstLength(aRows * bCols * batchCount);
+
+        // Perform the batched matrix-matrix multiplication
+        JCublas2.cublasGemmStridedBatchedEx(
+                handle.get(),
+                transA ? cublasOperation.CUBLAS_OP_T : cublasOperation.CUBLAS_OP_N,
+                transB ? cublasOperation.CUBLAS_OP_T : cublasOperation.CUBLAS_OP_N,
+                aRows, // Number of rows in A
+                bCols, // Number of columns in B
+                aColsBRows, // Number of columns in A (or rows in B)
+                cpuPointer(timesAB),
+                matA.pointer,
+                cudaDataType.CUDA_R_64F, // Data type for A
+                lda,
+                strideA,
+                matB.pointer,
+                cudaDataType.CUDA_R_64F, // Data type for B
+                ldb,
+                strideB,
+                cpuPointer(timesResult),
+                result.pointer,
+                cudaDataType.CUDA_R_64F, // Data type for result
+                ldResult,
+                strideResult,
+                batchCount,
+                cudaDataType.CUDA_R_64F, // Computation type (double precision)
+                cublasGemmAlgo.CUBLAS_GEMM_DEFAULT // Use default algorithm
         );
-
-        // Synchronize the device
-        JCudaDriver.cuCtxSynchronize();
-
-        // Clean up
-        JCudaDriver.cuModuleUnload(module);
     }
-
 
 }
 

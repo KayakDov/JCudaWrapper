@@ -13,14 +13,14 @@ import jcuda.runtime.cudaStream_t;
  * and destruction of a {@link cublasHandle} and {@link cudaStream_t}, ensuring that 
  * resources are properly cleaned up.
  * 
- * <p>
+ 
  * Example usage:
  * <pre>
  * try (Handle handle = new Handle()) {
  *     // Use handle.get() to perform operations with the handle
  * }
  * </pre>
- * </p>
+ 
  * 
  * <p>
  * This class registers the handle and stream with a {@link Cleaner} to ensure that 

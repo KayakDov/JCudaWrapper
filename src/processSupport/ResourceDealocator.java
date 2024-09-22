@@ -10,7 +10,7 @@ import java.util.function.Consumer;
  *
  * The class that calls this method should implement autoclosable with:
  *
- * @Override public void close() throws Exception { cleanable.clean(); }
+ * @param <T> The type of data that will need to be cleaned.
  */
 public class ResourceDealocator<T> implements Runnable {
 
@@ -34,7 +34,7 @@ public class ResourceDealocator<T> implements Runnable {
      * that data is no longer accessible.
      */
     public static <T> Cleaner.Cleanable register(Object obj, Consumer<T> closeOperation, T... needsClosure) {
-        return cleaner.register(obj, new ResourceDealocator(closeOperation, needsClosure));
+        return cleaner.register(obj, new ResourceDealocator<>(closeOperation, needsClosure));
     }
 
     /**

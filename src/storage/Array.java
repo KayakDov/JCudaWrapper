@@ -3,16 +3,11 @@ package storage;
 import processSupport.ResourceDealocator;
 import java.lang.ref.Cleaner;
 import java.util.Arrays;
-import javax.management.ImmutableDescriptor;
 import jcuda.Pointer;
 import jcuda.Sizeof;
 import jcuda.driver.CUdeviceptr;
-import jcuda.driver.CUfunction;
-import jcuda.driver.CUmodule;
-import jcuda.driver.JCudaDriver;
 import jcuda.runtime.JCuda;
 import jcuda.runtime.cudaMemcpyKind;
-import jcuda.runtime.cudaStream_t;
 import processSupport.Handle;
 
 /**
@@ -26,12 +21,22 @@ import processSupport.Handle;
  * 
  * <p>Note: This class is designed to be extended by specific array implementations.</p>
  * 
+ * http://www.jcuda.org/tutorial/TutorialIndex.html#CreatingKernels
+ * 
+ * TODO:Implement methods with JBLAS as an aulternative for when there's no gpu.
+ * 
  * @author E. Dov Neimand
  */
 abstract class Array implements AutoCloseable {
 
     private final Cleaner.Cleanable cleanable;
+    /**
+     * The pointer to the array in gpu memory.
+     */
     protected final CUdeviceptr pointer;
+    /**
+     * The length of the array.
+     */
     public final int length;
     private final PrimitiveType type;
 
@@ -77,7 +82,7 @@ abstract class Array implements AutoCloseable {
 
     /**
      * Creates a copy of this array.
-     * 
+     * @param handle The handle.
      * @return A new Array instance with the same data.
      */
     public abstract Array copy(Handle handle);
@@ -122,6 +127,7 @@ abstract class Array implements AutoCloseable {
      * @param fromIndex The index in the source array to start copying from.
      * @param length The number of elements to copy.
      * @param type The type of the elements.
+     * @param handle The handle.
      * 
      * @throws IllegalArgumentException if any index is out of bounds or length is negative.
      */
@@ -144,6 +150,7 @@ abstract class Array implements AutoCloseable {
      * @param toIndex The index in the destination array to start copying to.
      * @param fromIndex The index in this array to start copying from.
      * @param length The number of elements to copy.
+     * @param handle The handle.
      * 
      * @throws IllegalArgumentException if any index is out of bounds or length is negative.
      */
@@ -170,6 +177,7 @@ abstract class Array implements AutoCloseable {
      * @param toIndex The index in the destination array to start copying to.
      * @param fromIndex The index in this array to start copying from.
      * @param length The number of elements to copy.
+     * @param handle The handle.
      * 
      * @throws IllegalArgumentException if any index is out of bounds or length is negative.
      */
@@ -191,7 +199,7 @@ abstract class Array implements AutoCloseable {
      * @param toIndex The index in the destination array to start copying to.
      * @param fromIndex The index in this array to start copying from.
      * @param length The number of elements to copy.
-     * 
+     * @param handle The handle.
      * @throws IllegalArgumentException if any index is out of bounds or length is negative.
      */
     public void set(Handle handle, Array from, int toIndex, int fromIndex, int length){
@@ -205,6 +213,7 @@ abstract class Array implements AutoCloseable {
      * @param toStart The starting index in the CPU array.
      * @param fromStart The starting index in this GPU array.
      * @param length The number of elements to copy.
+     * @param handle The handle.
      * 
      * @throws IllegalArgumentException if any index is out of bounds or length is negative.
      */
@@ -227,7 +236,7 @@ abstract class Array implements AutoCloseable {
      * @param toIndex The starting index in this GPU array.
      * @param fromIndex The starting index in the CPU array.
      * @param size The number of elements to copy.
-     * 
+     * @param handle The handle.
      * @throws ArrayIndexOutOfBoundsException if any index is out of bounds or size is negative.
      */
     protected void set(Handle handle, Pointer fromCPUArray, int toIndex, int fromIndex, int size) {
@@ -243,7 +252,7 @@ abstract class Array implements AutoCloseable {
      * 
      * @param fromCPUArray The source CPU array.
      * @param length The number of elements to copy.
-     * 
+     * @param handle The handle.
      * @throws ArrayIndexOutOfBoundsException if length is negative.
      */
     protected void set(Handle handle, Pointer fromCPUArray, int length) {
@@ -257,7 +266,7 @@ abstract class Array implements AutoCloseable {
      * @param fromCPUArray The source CPU array.
      * @param toIndex The starting index in this GPU array.
      * @param length The number of elements to copy.
-     * 
+     * @param handle The handle.
      * @throws IllegalArgumentException if any index is out of bounds or length is negative.
      */
     protected void set(Handle handle, Pointer fromCPUArray, int toIndex, int length) {
@@ -280,9 +289,12 @@ abstract class Array implements AutoCloseable {
     
     /**
      * Sets the contents of this array to 0.
+     * @param  handle The handle.
+     * @return this.
      */
-    public void fill0(Handle handle){
+    public Array fill0(Handle handle){
         JCuda.cudaMemsetAsync(pointer, 0, length*type.size, handle.getStream());
+        return this;
     }
 
     
@@ -292,7 +304,7 @@ abstract class Array implements AutoCloseable {
      * @param d A double that needs a pointer.
      * @return A pointer to a singleton array containing d.
      */
-   protected Pointer cpuPointer(double d){
+   protected static Pointer cpuPointer(double d){
        return Pointer.to(new double[]{d});
    }
    
@@ -308,6 +320,7 @@ abstract class Array implements AutoCloseable {
     /**
      * Checks that all the numbers are greater than or equal to the lower bound.  
      * An exception is thrown if not.
+     * @param bound The lower bound.
      * @param needsCheck A number that might be greater than the lower bound.
      */
     protected static void checkLowerBound(int bound, int... needsCheck){

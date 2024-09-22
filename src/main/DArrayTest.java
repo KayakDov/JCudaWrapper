@@ -2,14 +2,20 @@ package main;
 
 import storage.DArray;
 import processSupport.Handle;
-import java.util.Arrays;
-import jcuda.runtime.JCuda;
 
+/**
+ * Tests the DArray class.
+ * @author E. Dov Neimand
+ */
 public class DArrayTest {
 
-    static Handle handle = new Handle();
+    public static Handle handle = new Handle();
     
-    public static void main(String[] args) throws Exception {
+    /**
+     * Runs the tests.
+     * @param args Not used.
+     */
+    public static void main(String[] args) {
 
         // Initialize the GPU handle for all operations
         

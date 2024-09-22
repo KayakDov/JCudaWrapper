@@ -9,8 +9,8 @@ import storage.DArray;
 import storage.DSingleton;
 
 /**
- *
- * @author edov
+ * Tests some matrix functions.
+ * @author E. Dov Neimand
  */
 public class MatrixTest {
 
@@ -25,7 +25,7 @@ public class MatrixTest {
         
         DArray sixCount1D = new DArray(hand, 1,2,9,3,4,9,5,6,9);
         
-        Matrix B = new Matrix(sixCount1D, 2, 3, 3, hand).transpose();
+        Matrix B = new Matrix(hand, sixCount1D, 2, 3, 3).transpose();
                 
         
         System.out.println("B = \n" + B.toString() + "\n");        
@@ -35,14 +35,14 @@ public class MatrixTest {
         tests.add(A.getHeight() == 2); //0
         tests.add(A.getWidth() == 3); //1
         tests.add(A.equals(B.transpose()));//2
-        tests.add(A.multiply(B).equals(new Matrix(new DArray(hand, 35, 44, 44, 56), 2, 2, hand)));//3
+        tests.add(A.multiply(B).equals(new Matrix(hand, new DArray(hand, 35, 44, 44, 56), 2, 2)));//3
         tests.add(A.add(B.transpose()).equals(A.multiply(2)));//4
-        tests.add(A.subtract(A).equals(new Matrix(2, 3, hand).fill(0)));//5
+        tests.add(A.subtract(A).equals(new Matrix(hand, 2, 3).fill(0)));//5
         tests.add(A.multiply(1).equals(A));//6
         
         Matrix addOneResult = new Matrix(
-                sixCount1D.addToMe(hand, 1, new DSingleton(hand, 1), 0, 1), 
-                        2, 3, 3, hand);
+                hand, sixCount1D.addToMe(hand, 1, new DSingleton(hand, 1), 0, 1), 
+                        2, 3, 3);
         
         tests.add(A.scalarAdd(1).equals(addOneResult));//7
         tests.add(A.insert(new Matrix(hand, new double[][]{{100}}), 0, 2)

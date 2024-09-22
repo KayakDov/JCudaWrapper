@@ -18,7 +18,7 @@ import storage.DSingleton;
  * for automatic resource cleanup, ensuring that the streams are destroyed when
  * they are no longer needed.
  *
- * <p>
+ 
  * Usage:
  * <pre>
  * try (StreamGroup streamGroup = new StreamGroup(10)) {
@@ -27,7 +27,7 @@ import storage.DSingleton;
  *     });
  * }
  * </pre>
- * </p>
+ 
  *
  * <p>
  * Note: The streams are automatically synchronized and destroyed when the
