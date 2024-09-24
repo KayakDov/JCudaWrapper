@@ -82,7 +82,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
      * @param mat The matrix to be copied to GPU memory.
      * @param handle The JCublas handle for GPU operations.
      */
-    public Matrix(RealMatrix mat, Handle handle) {
+    public Matrix(Handle handle, RealMatrix mat) {
         this(handle, mat.getData());
     }
 
@@ -154,7 +154,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     @Override
     public Matrix multiply(RealMatrix m) throws DimensionMismatchException {
 
-        try (Matrix mat = new Matrix(m, handle)) {
+        try (Matrix mat = new Matrix(handle, m)) {
             Matrix result = multiply(mat);
             return result;
         }
@@ -279,7 +279,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
      */
     @Override
     public Matrix add(RealMatrix m) throws MatrixDimensionMismatchException {
-        Matrix mat = new Matrix(m, handle);
+        Matrix mat = new Matrix(handle, m);
         Matrix add = add(mat);
         mat.close();
         return add;
@@ -294,7 +294,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
         if (other.height != height || other.width != width)
             throw new MatrixDimensionMismatchException(other.height, other.width, height, width);
 
-        return new Matrix(handle, height, width).addAndSet(false, false, 1, other, 1, this);
+        return new Matrix(handle, height, width).addAndSet(1, other, 1, this);
     }
 
     /**
@@ -345,6 +345,19 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     public Matrix addAndSet(boolean transA, boolean transB, double alpha, Matrix a, double beta, Matrix b) {
         return addAndSet(handle, transA, transB, alpha, a, beta, b);
     }
+    
+    /**
+     * @see Matrix#addAndSet(boolean, boolean, double, algebra.Matrix, double, algebra.Matrix) 
+     * Uses default handle.
+     * @param alpha the multiply by A.
+     * @param a The A matrix.
+     * @param beta To multiply by B.
+     * @param b The B matrix.
+     * @return This.
+     */
+    public Matrix addAndSet(double alpha, Matrix a, double beta, Matrix b) {
+        return addAndSet(handle, false, false, alpha, a, beta, b);
+    }
 
     /**
      * {@inheritDoc}
@@ -354,7 +367,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
         if (m.getRowDimension() != getRowDimension() || m.getColumnDimension() != getColumnDimension())
             throw new MatrixDimensionMismatchException(m.getRowDimension(), m.getColumnDimension(), getRowDimension(), getColumnDimension());
 
-        Matrix mat = new Matrix(m, handle);
+        Matrix mat = new Matrix(handle, m);
         Matrix result = subtract(mat);
         mat.close();
         return result;
@@ -371,7 +384,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
             throw new IllegalArgumentException("Matrix dimensions are not compatible for addition");
         }
 
-        return new Matrix(handle, height, width).addAndSet(false, false, -1, other, 1, this);
+        return new Matrix(handle, height, width).addAndSet(-1, other, 1, this);
     }
 
     /**
@@ -382,7 +395,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
      * @return A new matrix equal to this matrix times a scalar.
      */
     public Matrix multiply(double d) {
-        return new Matrix(handle, height, width).addAndSet(false, false, d, this, 0, this);
+        return new Matrix(handle, height, width).addAndSet(d, this, 0, this);
     }
 
     /**
@@ -410,7 +423,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     @Override
     public Matrix scalarAdd(double d) {
         Matrix scalarMat = new Matrix(handle, height, width).fill(d);
-        return scalarMat.addAndSet(false, false, 1, this, 1, scalarMat);
+        return scalarMat.addAndSet(1, this, 1, scalarMat);
 
     }
 
@@ -430,7 +443,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
         checkSubMatrixParameters(row, row + other.height, col, col + other.width);
 
         getSubMatrix(row, row + other.height, col, col + other.width)
-                .addAndSet(handle, false, false, 1, other, 0, other);
+                .addAndSet(1, other, 0, other);
 
         return this;
     }
@@ -682,10 +695,11 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
 
         Matrix copy = new Matrix(handle, height, width);
 
-        copy.addAndSet(false, false, 1, this, 0, this);
+        copy.addAndSet(1, this, 0, this);
 
         return copy;
-    }    
+    }
+    
 
     /**
      * {@inheritDoc}
@@ -1204,13 +1218,23 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
         data.close();
     }
 
+    /**
+     * Adds to this matrix the outer product of a and b.
+     * @param a A column.
+     * @param b A row
+     * @return The outer product of a and b.
+     */
     public Matrix addOuterProduct(Vector a, Vector b){
-        if(colDist != height)
-            insert(handle, a.outerProduct(b), 0, 0);
         
-        else data.outerProd(handle, height, width, 1, a.data, a.inc, b.data, b.inc);
+        data.outerProd(handle, height, width, 1, a.data, a.inc, b.data, b.inc, colDist);
         
         return this;
+    }
+    
+    
+    
+    public Vector asVectorCopy(){
+        return new Vector(handle, copy().data, 1);
     }
     
 }

@@ -1,5 +1,6 @@
 package main;
 
+import algebra.Matrix;
 import algebra.Vector;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -97,7 +98,6 @@ public class VectorTest {
 
         tests.add(v1.getMaxValue() == 60.5); // 38
 
-        System.out.println(v1);
         System.out.println(v1.getMinValue());
 
         tests.add(Math.abs(v1.getMinValue()) < 1e-7); // 39
@@ -105,6 +105,14 @@ public class VectorTest {
         tests.add(v1.getMinIndex() == 0); // 40
 
         tests.add(v1.getMaxIndex() == 5); // 41
+        
+        v1.close();v2.close();
+        v1 = new Vector(handle, 1, 1);
+        v2 = new Vector(handle, 1,2,3);
+        Matrix outerProd = v1.outerProduct(v2);
+        
+        tests.add(outerProd.equals(new Matrix(handle, new double[][]{{1,1},{2,2},{3,3}})));//42
+        
 
         System.out.println("failed tests "
                 + Arrays.toString(IntStream.range(0, tests.size()).filter(i -> !tests.get(i)).toArray())

@@ -355,13 +355,13 @@ public class DArray extends Array {
      * @param incY When iterating though the elements of y, the jump size.
      *
      */
-    public void outerProd(Handle handle, int rows, int cols, double multProd, DArray vecX, int incX, DArray vecY, int incY) {
+    public void outerProd(Handle handle, int rows, int cols, double multProd, DArray vecX, int incX, DArray vecY, int incY, int lda) {
         checkNull(handle, vecX, vecY);
-        checkPos(rows, cols);
+        checkPos(lda, cols);
         checkLowerBound(1, incY, incX);
-        checkAgainstLength(rows * cols);
+        checkAgainstLength(lda * cols - 1);
 
-        JCublas2.cublasDger(handle.get(), rows, cols, cpuPointer(multProd), vecX.pointer, incX, vecY.pointer, incY, pointer, rows);
+        JCublas2.cublasDger(handle.get(), rows, cols, cpuPointer(multProd), vecX.pointer, incX, vecY.pointer, incY, pointer, lda);
     }
 
     /**

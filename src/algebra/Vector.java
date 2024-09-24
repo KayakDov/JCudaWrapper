@@ -373,7 +373,64 @@ public class Vector extends RealVector implements AutoCloseable {
      * @throws OutOfRangeException If the index is out of range.
      */
     public void setSubVector(int i, Vector rv) throws OutOfRangeException {
-        data.set(handle, rv.data, i * inc, 0, rv.getDimension());
+        data.set(handle, rv.data, i * inc, 0, inc, rv.inc, rv.getDimension());
+    }
+
+    /**
+     * Sets a portion of this vector to the contents of the given matrix.
+     * Specifically, the method inserts the columns of the matrix into this
+     * vector starting at the specified index and offsets each column by the
+     * height of the matrix.
+     *
+     * @param toIndex the starting index in this vector where the subvector
+     * (matrix columns) will be inserted
+     * @param m the matrix whose columns are used to set the subvector in this
+     * vector
+     *
+     * @throws IndexOutOfBoundsException if the specified index or resulting
+     * subvector extends beyond the vector's bounds
+     *
+     *///TODO: This method can be made faster with multi threading (multiple handles)
+    public void setSubVector(int toIndex, Matrix m) {
+        for (int mCol = 0; mCol < getDimension(); mCol++)
+            setSubVector(toIndex + mCol * m.getHeight(), m.getColumnVector(mCol));
+    }
+    
+    /**
+     * Sets a portion of this vector to the contents of the given matrix.
+     * Specifically, the method inserts the columns of the matrix into this
+     * vector starting at the specified index and offsets each column by the
+     * height of the matrix.
+     *
+     * @param toIndex the starting index in this vector where the subvector
+     * (matrix columns) will be inserted
+     * @param m the matrix whose columns are used to set the subvector in this
+     * vector
+     *
+     * @throws IndexOutOfBoundsException if the specified index or resulting
+     * subvector extends beyond the vector's bounds
+     *
+     *///TODO: This method can be made faster with multi threading (multiple handles)
+    public void set(Matrix m) {
+        for (int mCol = 0; mCol < getDimension(); mCol++)
+            setSubVector(mCol * m.getHeight(), m.getColumnVector(mCol));
+    }
+    
+    /**
+     * Sets a portion of this vector to the contents of the given matrix.
+     * Specifically, the method inserts the columns of the matrix into this
+     * vector starting at the specified index and offsets each column by the
+     * height of the matrix.
+     *
+     * @param v the matrix whose columns are used to set the subvector in this
+     * vector
+     *
+     * @throws IndexOutOfBoundsException if the specified index or resulting
+     * subvector extends beyond the vector's bounds
+     *
+     */
+    public void set(Vector v) {        
+            setSubVector(0, v);
     }
 
     /**
@@ -671,11 +728,12 @@ public class Vector extends RealVector implements AutoCloseable {
 
     /**
      * @param v The vector with which this one is creating an outer product.
+     * @return The outer product.
      * @see Vector#outerProduct(org.apache.commons.math3.linear.RealVector)
      */
     public Matrix outerProduct(Vector v) {
-        Matrix outerProd = new Matrix(handle, getDimension(), v.getDimension());
-        outerProd.data.outerProd(handle, getDimension(), v.getDimension(), 1, data, inc, v.data, v.inc);
+        Matrix outerProd = new Matrix(handle, getDimension(), v.getDimension()).fill(0);
+        outerProd.data.outerProd(handle, getDimension(), v.getDimension(), 1, data, inc, v.data, v.inc, getDimension());
         return outerProd;
     }
 
@@ -938,7 +996,7 @@ public class Vector extends RealVector implements AutoCloseable {
         double[] dataArray = toArray();
 
         walker.start(getDimension(), start, end);
-        
+
         if (start <= end) for (int i = start; i <= end; i++)
                 walker.visit(i, dataArray[i]);
 
@@ -949,7 +1007,7 @@ public class Vector extends RealVector implements AutoCloseable {
         else try (DArray temp = new DArray(handle, dataArray)) {
             data.set(handle, temp, 0, 0, inc, 1, getDimension());
         }
-        
+
         return walker.end();
     }
 
@@ -1004,26 +1062,29 @@ public class Vector extends RealVector implements AutoCloseable {
         // Complete the walk
         return walker.end();
     }
-    
+
     /**
-     * Creates a vertical matrix from this vector.  Note, this method only works
-     * if the stride increment is 1.  Otherwise an exception is thrown.
-     * 
-     * If a vertical matrix is desired for a stride increment that's not one, 
+     * Creates a vertical matrix from this vector. Note, this method only works
+     * if the stride increment is 1. Otherwise an exception is thrown.
+     *
+     * If a vertical matrix is desired for a stride increment that's not one,
      * create a horizontal matrix and transpose it.
-     * 
+     *
      * @return A vertical matrix representing this vector.
      */
-    public Matrix vertical(){
-        if(inc != 1) throw new RuntimeException("The stride increment must be one.");
+    public Matrix vertical() {
+        if (inc != 1)
+            throw new RuntimeException("The stride increment must be one.");
         return new Matrix(handle, data, getDimension(), 1);
     }
-    
+
     /**
      * Creates a horizontal matrix from this vector.
+     *
      * @return A horizontal matrix from this vector.
      */
-    public Matrix horizontal(){
+    public Matrix horizontal() {
         return new Matrix(handle, data, 1, getDimension(), inc);
     }
+
 }

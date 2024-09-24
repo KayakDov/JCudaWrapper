@@ -1,6 +1,7 @@
 package main;
 
 import algebra.Matrix;
+import algebra.Vector;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.stream.IntStream;
@@ -103,6 +104,12 @@ public class MatrixTest {
         
         tests.add(Arrays.equals(A.getRow(1), new double[]{3, 2, 1}));//27
         
+        A.close();
+        B.close();
+        A = new Matrix(hand, 2, 3).fill(0);
+        A.addOuterProduct(new Vector(hand, 1, 2), new Vector(hand, 1, 2, 3));
+        
+        tests.add(A.equals(new Matrix(hand, new double[][]{{1,2},{2,4},{3,6}})));//28
         
         System.out.println("failed tests " + 
                 Arrays.toString(IntStream.range(0, tests.size()).filter(i -> !tests.get(i)).toArray())
