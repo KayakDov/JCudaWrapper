@@ -45,7 +45,7 @@ abstract class Array implements AutoCloseable {
      */
     public enum PrimitiveType {
         BYTE(Sizeof.BYTE), CHAR(Sizeof.CHAR), DOUBLE(Sizeof.DOUBLE), FLOAT(Sizeof.FLOAT), 
-        INT(Sizeof.INT), LONG(Sizeof.LONG), SHORT(Sizeof.SHORT);
+        INT(Sizeof.INT), LONG(Sizeof.LONG), SHORT(Sizeof.SHORT), POINTER(Sizeof.POINTER);
 
         public final int size;
 

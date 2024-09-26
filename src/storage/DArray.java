@@ -41,11 +41,9 @@ public class DArray extends Array {
         copy(handle, this, values, 0, 0, values.length);
     }
 
+    
     /**
-     * Creates a copy of this array.
-     *
-     * @param handle The gpu handle that manages this operation.
-     * @return A new DArray that is a copy of this array.
+     * {@inheritDoc}
      */
     @Override
     public DArray copy(Handle handle) {

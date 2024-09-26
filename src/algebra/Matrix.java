@@ -37,7 +37,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
      * stored with non-contiguous elements in memory.
      * </p>
      */
-    private final int colDist; //TODO: make private final
+    public final int colDist; 
 
     /**
      * The underlying GPU data storage for this matrix.
