@@ -8,12 +8,21 @@ import jcuda.Pointer;
 import jcuda.cudaDataType;
 import jcuda.driver.CUdeviceptr;
 import jcuda.jcublas.JCublas2;
+import jcuda.jcublas.cublasFillMode;
 import jcuda.jcublas.cublasGemmAlgo;
 import jcuda.jcublas.cublasOperation;
+import jcuda.jcusolver.JCusolverDn;
+import jcuda.jcusolver.cusolverDnHandle;
+import jcuda.jcusolver.cusolverEigMode;
+import jcuda.jcusolver.gesvdjInfo;
+import jcuda.jcusolver.syevjInfo;
 import jcuda.runtime.JCuda;
 import jcuda.runtime.cudaMemcpyKind;
 import org.apache.commons.math3.exception.DimensionMismatchException;
 import processSupport.Handle;
+import static storage.Array.checkNull;
+import static storage.Array.checkPos;
+import static storage.DArray.cpuPointer;
 
 /**
  * Class for managing a batched 2D array of arrays (DArrays) on the GPU and
@@ -43,6 +52,7 @@ public class DArray2d extends Array {
 
     /**
      * Stores the list of pointers in the gpu.
+     *
      * @param handle The handle
      * @param arrays The arrays to be stored in this array. This array must be
      * nonempty.
@@ -174,11 +184,168 @@ public class DArray2d extends Array {
                 transA ? cublasOperation.CUBLAS_OP_T : cublasOperation.CUBLAS_OP_N, // Operation on A (transpose or not)
                 transB ? cublasOperation.CUBLAS_OP_T : cublasOperation.CUBLAS_OP_N, // Operation on B (transpose or not)
                 aRows, bCols, aColsBRows, // Number of columns of A / rows of B
-                cpuPointer(timesAB),
+                DArray.cpuPointer(timesAB),
                 A.pointer, lda, // Leading dimension of A
                 B.pointer, ldb, // Leading dimension of B
-                cpuPointer(timesResult), pointer, ldResult, // Leading dimension of result matrices
+                DArray.cpuPointer(timesResult), pointer, ldResult, // Leading dimension of result matrices
                 batchCount // Number of matrices to multiply
+        );
+    }
+
+    /**
+     * https://docs.nvidia.com/cuda/cusolver/index.html?highlight=cusolverDnCheevjBatched#cuSolverDN-lt-t-gt-syevjbatch
+     *
+     * Computes the eigenvalues and eigenvectors of a batch of symmetric
+     * matrices using the cuSolver library.
+     *
+     * This method leverages the cusolverDnDsyevjBatched function, which
+     * computes the eigenvalues and eigenvectors of symmetric matrices using the
+     * Jacobi method.
+     *
+     * This method creates and destroys it's own handle since it uses a
+     * different sort of handle then the handle class.
+     *
+     * @param height The height and width of the matrices.
+     * @param inputMatrices The input matrices, which must be stored in GPU
+     * memory consecutively so that each matrix is column-major with leading
+     * dimension lda, so the formula for random access is a_k[i, j] = A[i +
+     * lda*j + lda*n*k]
+     * @param ldInput The leading dimension of the input matrices.
+     * @param eigenvalues Array to store the eigenvalues of the matrices.
+     * @param resultVectors Array to store the eigenvectors of the matrices.
+     * @param ldResultVectors The leading dimension of the result vectors. This
+     * is a matrix, each column is an eigan vector.
+     * @param batchCount The number of matrices in the batch.
+     * @param cublasFillMode Fill mode for the symmetric matrix (upper or
+     * lower).
+     */
+    public static void computeEigen(int height, DArray inputMatrices, int ldInput,
+            DArray eigenvalues, DArray resultVectors, int ldResultVectors,
+            int batchCount, int cublasFillMode) {
+
+        cusolverDnHandle solverHandle = new cusolverDnHandle();
+        JCusolverDn.cusolverDnCreate(solverHandle); // Create handle
+
+        syevjInfo params = new syevjInfo(); // Correct type for Jacobi parameters
+        JCusolverDn.cusolverDnCreateSyevjInfo(params); // Create parameter structure
+        try (IArray info = IArray.empty(batchCount)) {
+
+            JCusolverDn.cusolverDnDsyevjBatched(
+                    solverHandle, // Handle to the cuSolver context
+                    cusolverEigMode.CUSOLVER_EIG_MODE_VECTOR, // Compute both eigenvalues and eigenvectors
+                    cublasFillMode, // Indicates matrix is symmetric
+                    height, // Size of each matrix
+                    inputMatrices.pointer, // Pointer to input matrices in GPU memory
+                    ldInput, // Leading dimension of input matrices
+                    eigenvalues.pointer, // Pointer to output array for eigenvalues
+                    resultVectors.pointer, // Pointer to output array for eigenvectors
+                    ldResultVectors, // Leading dimension of result vectors
+                    info.pointer, // Array to store status info for each matrix
+                    params, // Jacobi algorithm parameters
+                    batchCount // Number of matrices in the batch
+            );
+
+            // Step 5: Check for convergence status in info array
+            int[] infoHost = new int[batchCount]; // Host array to fetch status
+
+            Handle hand = new Handle();
+            info.get(hand, infoHost, 0, 0, batchCount);
+            hand.close();
+
+            for (int i = 0; i < batchCount; i++) {
+                if (infoHost[i] != 0) {
+                    System.err.println("Matrix " + i + " failed to converge: info = " + infoHost[i]);
+                }
+            }
+
+            // Step 6: Clean up resources
+            JCusolverDn.cusolverDnDestroySyevjInfo(params);
+            JCusolverDn.cusolverDnDestroy(solverHandle);     // Destroy solver handle
+        }
+    }
+
+    /**
+     * Performs batched matrix-matrix multiplication:
+     *
+     * <pre>
+     * Result[i] = alpha * op(A[i]) * op(B[i]) + timesResult * Result[i]
+     * </pre>
+     *
+     * Where op(A) and op(B) can be A and B or their transposes.
+     *
+     * This method computes multiple matrix-matrix multiplications at once,
+     * using strided data access, allowing for efficient batch processing.
+     *
+     * @param handle Handle to the cuBLAS library context.
+     * @param transA True if matrix A should be transposed, false otherwise.
+     * @param transB True if matrix B should be transposed, false otherwise.
+     * @param aRows The number of rows in matrix A.
+     * @param aColsBRows The number of columns in matrix A and the number of
+     * rows in matrix B.
+     * @param bCols The number of columns in matrix B.
+     * @param timesAB Scalar multiplier applied to the matrix-matrix product.
+     * @param matA Pointer to the batched matrix A in GPU memory.
+     * @param lda Leading dimension of matrix A (the number of elements between
+     * consecutive columns in memory).
+     * @param strideA Stride between consecutive matrices A in memory (number of
+     * elements).
+     * @param matB Pointer to the batched matrix B in GPU memory.
+     * @param ldb Leading dimension of matrix B (the number of elements between
+     * consecutive columns in memory).
+     * @param strideB Stride between consecutive matrices B in memory (number of
+     * elements).
+     * @param timesResult Scalar multiplier applied to each result matrix before
+     * adding the matrix-matrix product.
+     * @param result Pointer to the batched output matrix (result) in GPU
+     * memory.
+     * @param ldResult Leading dimension of the result matrix (the number of
+     * elements between consecutive columns in memory).
+     * @param strideResult Stride between consecutive result matrices in memory
+     * (number of elements).
+     * @param batchCount The number of matrix-matrix multiplications to compute.
+     *
+     */
+    public static void multMatMatBatched(Handle handle, boolean transA, boolean transB,
+            int aRows, int aColsBRows, int bCols, double timesAB, DArray matA,
+            int lda, long strideA, DArray matB, int ldb, long strideB, double timesResult,
+            DArray result, int ldResult, long strideResult, int batchCount) {
+
+        // Null checks for pointers
+        checkNull(handle, matA, matB, result);
+
+        // Ensure dimensions and leading dimensions are positive
+        checkPos(aRows, bCols, ldb, ldResult);
+
+        // Ensure matrices are valid for the specified batch count
+        matA.checkAgainstLength(aRows * aColsBRows * batchCount);
+        matB.checkAgainstLength(aColsBRows * bCols * batchCount);
+        result.checkAgainstLength(aRows * bCols * batchCount);
+
+        // Perform the batched matrix-matrix multiplication
+        JCublas2.cublasGemmStridedBatchedEx(
+                handle.get(),
+                transA ? cublasOperation.CUBLAS_OP_T : cublasOperation.CUBLAS_OP_N,
+                transB ? cublasOperation.CUBLAS_OP_T : cublasOperation.CUBLAS_OP_N,
+                aRows, // Number of rows in A
+                bCols, // Number of columns in B
+                aColsBRows, // Number of columns in A (or rows in B)
+                cpuPointer(timesAB),
+                matA.pointer,
+                cudaDataType.CUDA_R_64F, // Data type for A
+                lda,
+                strideA,
+                matB.pointer,
+                cudaDataType.CUDA_R_64F, // Data type for B
+                ldb,
+                strideB,
+                cpuPointer(timesResult),
+                result.pointer,
+                cudaDataType.CUDA_R_64F, // Data type for result
+                ldResult,
+                strideResult,
+                batchCount,
+                cudaDataType.CUDA_R_64F, // Computation type (double precision)
+                cublasGemmAlgo.CUBLAS_GEMM_DEFAULT // Use default algorithm
         );
     }
 

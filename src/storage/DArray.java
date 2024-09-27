@@ -6,15 +6,11 @@ import jcuda.Pointer;
 import jcuda.Sizeof;
 import jcuda.cudaDataType;
 import jcuda.driver.CUdeviceptr;
-import jcuda.driver.CUfunction;
-import jcuda.driver.CUmodule;
-import jcuda.driver.JCudaDriver;
 import jcuda.jcublas.JCublas2;
 import jcuda.jcublas.cublasDiagType;
 import jcuda.jcublas.cublasFillMode;
 import jcuda.jcublas.cublasGemmAlgo;
 import jcuda.jcublas.cublasOperation;
-import jcuda.runtime.JCuda;
 
 /**
  * This class provides functionalities to create and manipulate double arrays on
@@ -41,7 +37,6 @@ public class DArray extends Array {
         copy(handle, this, values, 0, 0, values.length);
     }
 
-    
     /**
      * {@inheritDoc}
      */
@@ -88,16 +83,26 @@ public class DArray extends Array {
      */
     public static void copy(Handle handle, DArray to, double[] fromArray, int toIndex, int fromIndex, int length) {
         checkNull(fromArray, to);
-        
+
         Array.copy(
-                handle, 
-                to, 
-                Pointer.to(fromArray), 
-                toIndex, 
-                fromIndex, 
-                length, 
+                handle,
+                to,
+                Pointer.to(fromArray),
+                toIndex,
+                fromIndex,
+                length,
                 PrimitiveType.DOUBLE
         );
+    }
+
+    /**
+     * A pointer to a singleton array containing d.
+     *
+     * @param d A double that needs a pointer.
+     * @return A pointer to a singleton array containing d.
+     */
+    static Pointer cpuPointer(double d) {
+        return Pointer.to(new double[]{d});
     }
 
     /**
@@ -838,11 +843,11 @@ public class DArray extends Array {
         checkAgainstLength(height * width - 1);
 
         if (height == lda) {
-            if(fill == 0) {
-                subArray(0, width*height).fill0(handle);
+            if (fill == 0) {
+                subArray(0, width * height).fill0(handle);
                 return this;
             }
-            return subArray(0, width*height).fill(handle, fill, 1);            
+            return subArray(0, width * height).fill(handle, fill, 1);
         }
 
         try (DArray filler = DArray.empty(width * height).fill(handle, fill, 1)) {
@@ -1068,87 +1073,52 @@ public class DArray extends Array {
     }
 
     /**
-     * Performs batched matrix-matrix multiplication:
+     * TODO: put a version of this in the matrix class.
      *
-     * <pre>
-     * Result[i] = alpha * op(A[i]) * op(B[i]) + timesResult * Result[i]
-     * </pre>
+     * Performs symmetric batch matrix-matrix multiplication using
+     * cublasDsyrkBatched.
      *
-     * Where op(A) and op(B) can be A and B or their transposes.
+     * Computes this = A * A^T + timesThis * this for each matrix in the batch,
+     * ensuring C is symmetric.
      *
-     * This method computes multiple matrix-matrix multiplications at once,
-     * using strided data access, allowing for efficient batch processing.
-     *
-     * @param handle Handle to the cuBLAS library context.
-     * @param transA True if matrix A should be transposed, false otherwise.
-     * @param transB True if matrix B should be transposed, false otherwise.
-     * @param aRows The number of rows in matrix A.
-     * @param aColsBRows The number of columns in matrix A and the number of
-     * rows in matrix B.
-     * @param bCols The number of columns in matrix B.
-     * @param timesAB Scalar multiplier applied to the matrix-matrix product.
-     * @param matA Pointer to the batched matrix A in GPU memory.
-     * @param lda Leading dimension of matrix A (the number of elements between
-     * consecutive columns in memory).
-     * @param strideA Stride between consecutive matrices A in memory (number of
-     * elements).
-     * @param matB Pointer to the batched matrix B in GPU memory.
-     * @param ldb Leading dimension of matrix B (the number of elements between
-     * consecutive columns in memory).
-     * @param strideB Stride between consecutive matrices B in memory (number of
-     * elements).
-     * @param timesResult Scalar multiplier applied to each result matrix before
-     * adding the matrix-matrix product.
-     * @param result Pointer to the batched output matrix (result) in GPU
-     * memory.
-     * @param ldResult Leading dimension of the result matrix (the number of
-     * elements between consecutive columns in memory).
-     * @param strideResult Stride between consecutive result matrices in memory
-     * (number of elements).
-     * @param batchCount The number of matrix-matrix multiplications to compute.
+     * @param handle CUBLAS handle for managing the operation.
+     * @param transpose
+     * @param uplo Specifies which part of the matrix is being used (upper or
+     * lower).
+     * @param resultRowsCols The number of rows/columns of the result matrices.
+     * @param cols The number of columns of A (for C = A * A^T).
+     * @param alpha Scalar multiplier for A * A^T.
+     * @param a Pointer array to the input matrices.
+     * @param lda Leading dimension of A.
+     * @param timesThis Scalar multiplier for the existing C matrix (usually 0
+     * for new computation).
+     * @param ldThis Leading dimension of C.
      *
      */
-    public static void multMatMatBatched(Handle handle, boolean transA, boolean transB,
-            int aRows, int aColsBRows, int bCols, double timesAB, DArray matA,
-            int lda, long strideA, DArray matB, int ldb, long strideB, double timesResult,
-            DArray result, int ldResult, long strideResult, int batchCount) {
+    public void matrixSquared(
+            Handle handle,
+            boolean transpose,
+            int uplo, // CUBLAS_FILL_MODE_UPPER or CUBLAS_FILL_MODE_LOWER
+            int resultRowsCols,
+            int cols,
+            double alpha,
+            DArray a,
+            int lda,
+            double timesThis,
+            int ldThis) {
 
-        // Null checks for pointers
-        checkNull(handle, matA, matB, result);
-
-        // Ensure dimensions and leading dimensions are positive
-        checkPos(aRows, bCols, ldb, ldResult);
-
-        // Ensure matrices are valid for the specified batch count
-        matA.checkAgainstLength(aRows * aColsBRows * batchCount);
-        matB.checkAgainstLength(aColsBRows * bCols * batchCount);
-        result.checkAgainstLength(aRows * bCols * batchCount);
-
-        // Perform the batched matrix-matrix multiplication
-        JCublas2.cublasGemmStridedBatchedEx(
+        JCublas2.cublasDsyrk(
                 handle.get(),
-                transA ? cublasOperation.CUBLAS_OP_T : cublasOperation.CUBLAS_OP_N,
-                transB ? cublasOperation.CUBLAS_OP_T : cublasOperation.CUBLAS_OP_N,
-                aRows, // Number of rows in A
-                bCols, // Number of columns in B
-                aColsBRows, // Number of columns in A (or rows in B)
-                cpuPointer(timesAB),
-                matA.pointer,
-                cudaDataType.CUDA_R_64F, // Data type for A
+                uplo,
+                transpose ? cublasOperation.CUBLAS_OP_N : cublasOperation.CUBLAS_OP_T, // Normal operation (no transpose)
+                resultRowsCols,
+                cols,
+                cpuPointer(alpha),
+                a.pointer,
                 lda,
-                strideA,
-                matB.pointer,
-                cudaDataType.CUDA_R_64F, // Data type for B
-                ldb,
-                strideB,
-                cpuPointer(timesResult),
-                result.pointer,
-                cudaDataType.CUDA_R_64F, // Data type for result
-                ldResult,
-                strideResult,
-                batchCount,
-                cudaDataType.CUDA_R_64F, // Computation type (double precision)
-                cublasGemmAlgo.CUBLAS_GEMM_DEFAULT // Use default algorithm
+                cpuPointer(alpha),
+                pointer,
+                ldThis
         );
     }
 

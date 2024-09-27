@@ -297,16 +297,6 @@ abstract class Array implements AutoCloseable {
         return this;
     }
 
-    
-    
-    /**
-     * A pointer to a singleton array containing d.
-     * @param d A double that needs a pointer.
-     * @return A pointer to a singleton array containing d.
-     */
-   protected static Pointer cpuPointer(double d){
-       return Pointer.to(new double[]{d});
-   }
    
    
     /**

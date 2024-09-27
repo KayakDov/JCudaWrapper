@@ -2,7 +2,7 @@ package algebra;
 
 import java.awt.Point;
 import java.util.function.Consumer;
-import java.util.function.UnaryOperator;
+
 import org.apache.commons.math3.exception.DimensionMismatchException;
 import processSupport.Handle;
 import storage.DArray2d;
@@ -77,14 +77,13 @@ public class MatrixBatch {
         this.arrays = arrays;
     }
 
-    
     /**
      * Creates a batch of matrices from the sub matrices of contains.
      *
      * @param contains The Matrix containing all the sub matrices that will go
      * into the batch.
-     * @param step Accepts a pair of indices in the matrix and moves that pair to
-     * the upper left corner of the next matrix to appear in the batch.
+     * @param step Accepts a pair of indices in the matrix and moves that pair
+     * to the upper left corner of the next matrix to appear in the batch.
      * @param height The height of each sub matrix.
      * @param width The width of each sub matrix.
      * @param batchSize The number of sub matrices.
@@ -92,11 +91,35 @@ public class MatrixBatch {
     public MatrixBatch(Matrix contains, Consumer<Point> step, int height, int width, int batchSize) {
 
         this(
-                height, 
-                width, 
-                contains.colDist, 
+                height,
+                width,
+                contains.colDist,
                 getDarray(contains, step, height, width, batchSize)
         );
+    }
+
+    /**
+     * Creates a batch of matrices from the sub matrices of contains.
+     *
+     * @param contains The Matrix containing all the sub matrices that will go
+     * into the batch.
+     * @param downStride How far down to go for the next matrix.
+     * @param rightStride Once a column is complete, go this is the distance to
+     * the next column.
+     * @param height The height of each sub matrix.
+     * @param width The width of each sub matrix.
+     */
+    public MatrixBatch(Matrix contains, int downStride, int rightStride, int height, int width) {
+
+        this(contains, p -> {
+            p.y += downStride;
+            if (p.y >= contains.getHeight()) {
+                p.y = 0;
+                p.x += rightStride;
+            }
+        },
+                height, width,
+                (contains.getHeight() / downStride) * (contains.getWidth() / rightStride));
     }
 
     /**
@@ -104,8 +127,8 @@ public class MatrixBatch {
      *
      * @param contains The Matrix containing all the sub matrices that will go
      * into the batch.
-     * @param step Accepts a pair of indices in the matrix and moves that pair to
-     * the upper left corner of the next matrix to appear in the batch.
+     * @param step Accepts a pair of indices in the matrix and moves that pair
+     * to the upper left corner of the next matrix to appear in the batch.
      * @param height The height of each sub matrix.
      * @param width The width of each sub matrix.
      * @param batchSize The number of sub matrices.
@@ -227,7 +250,7 @@ public class MatrixBatch {
      * </p>
      */
     public void transpose() {
-        this.transposeForOperations = true;
+        transposeForOperations = !transposeForOperations;
     }
 
     /**
@@ -236,5 +259,16 @@ public class MatrixBatch {
      */
     public void resetTranspose() {
         this.transposeForOperations = false;
+    }
+
+    /**
+     * Copies this batch but still references same location in gpu memory.
+     *
+     * @return A shallow copy of this batch.
+     */
+    public MatrixBatch shallowCopy() {
+        MatrixBatch copy = new MatrixBatch(height, width, colDist, arrays);
+        copy.transposeForOperations = transposeForOperations;
+        return copy;
     }
 }
