@@ -2,8 +2,6 @@ package algebra;
 
 import java.util.Arrays;
 import java.util.Iterator;
-import java.util.logging.Logger;
-import java.util.stream.IntStream;
 import org.apache.commons.math3.analysis.UnivariateFunction;
 import org.apache.commons.math3.linear.RealVector;
 import org.apache.commons.math3.exception.OutOfRangeException;
@@ -11,13 +9,11 @@ import org.apache.commons.math3.exception.DimensionMismatchException;
 import org.apache.commons.math3.exception.MathArithmeticException;
 import org.apache.commons.math3.exception.MathUnsupportedOperationException;
 import org.apache.commons.math3.exception.NotPositiveException;
-import org.apache.commons.math3.exception.NumberIsTooSmallException;
-import org.apache.commons.math3.linear.RealMatrix;
 import org.apache.commons.math3.linear.RealVectorChangingVisitor;
 import org.apache.commons.math3.linear.RealVectorPreservingVisitor;
-import processSupport.Handle;
-import storage.DArray;
-import storage.DSingleton;
+import resourceManagement.Handle;
+import array.DArray;
+import array.DSingleton;
 
 /**
  * The {@code Vector} class extends {@code RealVector} and represents a vector
@@ -26,7 +22,7 @@ import storage.DSingleton;
  */
 public class Vector extends RealVector implements AutoCloseable {
 
-    public final DArray data;  // Underlying array for GPU-based operations
+    private final DArray data;  // Underlying array for GPU-based operations
     private final Handle handle; // JCublas handle for GPU operations
     final int inc;
 
@@ -265,12 +261,13 @@ public class Vector extends RealVector implements AutoCloseable {
     public Vector ebeDivide(Vector v) throws DimensionMismatchException {
         checkVectorLength(v);
 
-        Vector inverse = new Vector(handle, v.getDimension()).fill(1);
+        try (Vector inverse = new Vector(handle, v.getDimension()).fill(1)) {
 
-        inverse.data.solveTriangularBandedSystem(handle, true, false, false,
-                v.getDimension(), 0, v.data, 1, 1);
+            inverse.data.solveTriangularBandedSystem(handle, true, false, false,
+                    v.getDimension(), 0, v.data, 1, 1);
 
-        return ebeMultiply(inverse);
+            return ebeMultiply(inverse);
+        }
 
     }
 
@@ -395,7 +392,7 @@ public class Vector extends RealVector implements AutoCloseable {
         for (int mCol = 0; mCol < getDimension(); mCol++)
             setSubVector(toIndex + mCol * m.getHeight(), m.getColumnVector(mCol));
     }
-    
+
     /**
      * Sets a portion of this vector to the contents of the given matrix.
      * Specifically, the method inserts the columns of the matrix into this
@@ -415,7 +412,7 @@ public class Vector extends RealVector implements AutoCloseable {
         for (int mCol = 0; mCol < getDimension(); mCol++)
             setSubVector(mCol * m.getHeight(), m.getColumnVector(mCol));
     }
-    
+
     /**
      * Sets a portion of this vector to the contents of the given matrix.
      * Specifically, the method inserts the columns of the matrix into this
@@ -429,8 +426,8 @@ public class Vector extends RealVector implements AutoCloseable {
      * subvector extends beyond the vector's bounds
      *
      */
-    public void set(Vector v) {        
-            setSubVector(0, v);
+    public void set(Vector v) {
+        setSubVector(0, v);
     }
 
     /**
@@ -552,14 +549,14 @@ public class Vector extends RealVector implements AutoCloseable {
     public double cosine(Vector other) {
         checkVectorLength(other);
 
-        Handle aNormHand = new Handle();
-        Handle bNormHand = new Handle();
         double[] norms = new double[2];
-        data.norm(aNormHand, getDimension(), inc, norms, 0);
-        other.data.norm(bNormHand, other.getDimension(), other.inc, norms, 1);
-        double dot = dotProduct(other);
-        aNormHand.close();
-        bNormHand.close();
+        double dot;
+        try (Handle aNormHand = new Handle(); Handle bNormHand = new Handle()) {
+            data.norm(aNormHand, getDimension(), inc, norms, 0);
+            other.data.norm(bNormHand, other.getDimension(), other.inc, norms, 1);
+            dot = dotProduct(other);
+        }
+
         return dot / (norms[0] * norms[1]);
     }
 
@@ -733,7 +730,7 @@ public class Vector extends RealVector implements AutoCloseable {
      */
     public Matrix outerProduct(Vector v) {
         Matrix outerProd = new Matrix(handle, getDimension(), v.getDimension()).fill(0);
-        outerProd.data.outerProd(handle, getDimension(), v.getDimension(), 1, data, inc, v.data, v.inc, getDimension());
+        outerProd.drray().outerProd(handle, getDimension(), v.getDimension(), 1, data, inc, v.data, v.inc, getDimension());
         return outerProd;
     }
 
@@ -751,11 +748,12 @@ public class Vector extends RealVector implements AutoCloseable {
      * @see Vector#projection(org.apache.commons.math3.linear.RealVector)
      */
     public Vector projection(Vector v) throws DimensionMismatchException, MathArithmeticException {
-        Handle dotHandle = new Handle();
         double[] dots = new double[2];
-        data.dot(dotHandle, v.data, v.inc, inc, dots, 0);
-        v.data.dot(handle, v.data, v.inc, inc, dots, 1);
-        dotHandle.close();
+        
+        try (Handle dotHandle = new Handle()) {
+            data.dot(dotHandle, v.data, v.inc, inc, dots, 0);
+            v.data.dot(handle, v.data, v.inc, inc, dots, 1);
+        }
         return v.mapMultiplyToSelf(dots[0] / dots[1]);
     }
 
@@ -1087,4 +1085,13 @@ public class Vector extends RealVector implements AutoCloseable {
         return new Matrix(handle, data, 1, getDimension(), inc);
     }
 
+    public unmodifiable.Vector unmodifiable() {
+        return new unmodifiable.Vector(handle, data, inc);
+    }
+
+    public DArray dArray() {
+        return data;
+    }
+    
+    
 }

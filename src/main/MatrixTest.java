@@ -5,9 +5,9 @@ import algebra.Vector;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.stream.IntStream;
-import processSupport.Handle;
-import storage.DArray;
-import storage.DSingleton;
+import resourceManagement.Handle;
+import array.DArray;
+import array.DSingleton;
 
 /**
  * Tests some matrix functions.

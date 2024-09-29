@@ -1,20 +1,19 @@
 package algebra;
 
-import storage.DArray;
-import main.GPU;
-import processSupport.Handle;
+import array.DArray;
+import resourceManagement.Handle;
 import java.awt.Dimension;
 import java.util.Arrays;
 import org.apache.commons.math3.exception.*;
 import org.apache.commons.math3.linear.*;
-import storage.DSingleton;
+import array.DSingleton;
 
 /**
  * Represents a matrix stored on the GPU. For more information on jcuda
- * 
+ *
  * TODO: implement extensions of this class to include banded, symmetric banded,
  * triangular packed, symmetric matrices.
- * 
+ *
  * http://www.jcuda.org/jcuda/jcublas/JCublas.html
  */
 public class Matrix extends AbstractRealMatrix implements AutoCloseable {
@@ -37,12 +36,12 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
      * stored with non-contiguous elements in memory.
      * </p>
      */
-    public final int colDist; 
+    public final int colDist;
 
     /**
      * The underlying GPU data storage for this matrix.
      */
-    public final DArray data;
+    private final DArray data;
 
     /**
      * Handle for managing JCublas operations, usually unique per thread.
@@ -162,7 +161,8 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
 
     /**
      * Performs matrix multiplication using JCublas.
-     * @see Matrix#multiply(org.apache.commons.math3.linear.RealMatrix) 
+     *
+     * @see Matrix#multiply(org.apache.commons.math3.linear.RealMatrix)
      * @param other The matrix to multiply with.
      * @return A new matrix that is the product of this matrix and the other.
      */
@@ -201,10 +201,11 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
                 timesThis, colDist);
         return this;
     }
-    
+
     /**
-     * @see Matrix#multiplyAndSet(processSupport.Handle, boolean, boolean, double, algebra.Matrix, algebra.Matrix, double) 
-     * timesThis is set to 0, transpose values are false, and timesAB is 1.     
+     * @see Matrix#multiplyAndSet(processSupport.Handle, boolean, boolean,
+     * double, algebra.Matrix, algebra.Matrix, double) timesThis is set to 0,
+     * transpose values are false, and timesAB is 1.
      * @param a To be multiplied by the first matrix.
      * @param b To be multiplied by the second matrix.
      * @return This matrix.
@@ -212,10 +213,10 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     public Matrix multiplyAndSet(Matrix a, Matrix b) {
         return multiplyAndSet(handle, false, false, 1, a, b, 0);
     }
-    
+
     /**
-     * @see Matrix#multiplyAndSet(processSupport.Handle, boolean, boolean, double, algebra.Matrix, algebra.Matrix, double) 
-     * Uses the default handle.
+     * @see Matrix#multiplyAndSet(processSupport.Handle, boolean, boolean,
+     * double, algebra.Matrix, algebra.Matrix, double) Uses the default handle.
      * @param transposeA True to transpose A, false otherwise.
      * @param transposeB True to transpose B, false otherwise.
      * @param timesAB TO me multiplied by AB.
@@ -279,14 +280,14 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
      */
     @Override
     public Matrix add(RealMatrix m) throws MatrixDimensionMismatchException {
-        Matrix mat = new Matrix(handle, m);
-        Matrix add = add(mat);
-        mat.close();
-        return add;
+        try (Matrix mat = new Matrix(handle, m)) {
+            return add(mat);
+        }
+
     }
 
-    /**     
-     * @see Matrix#add(org.apache.commons.math3.linear.RealMatrix) 
+    /**
+     * @see Matrix#add(org.apache.commons.math3.linear.RealMatrix)
      * @param other The other matrix to add.
      * @return The result of element-wise addition.
      */
@@ -330,10 +331,10 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
 
         return this;
     }
-    
+
     /**
-     * @see Matrix#addAndSet(boolean, boolean, double, algebra.Matrix, double, algebra.Matrix) 
-     * Uses default handle.
+     * @see Matrix#addAndSet(boolean, boolean, double, algebra.Matrix, double,
+     * algebra.Matrix) Uses default handle.
      * @param transA True to transpose A.
      * @param transB True to transpose B.
      * @param alpha the multiply by A.
@@ -345,10 +346,10 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     public Matrix addAndSet(boolean transA, boolean transB, double alpha, Matrix a, double beta, Matrix b) {
         return addAndSet(handle, transA, transB, alpha, a, beta, b);
     }
-    
+
     /**
-     * @see Matrix#addAndSet(boolean, boolean, double, algebra.Matrix, double, algebra.Matrix) 
-     * Uses default handle.
+     * @see Matrix#addAndSet(boolean, boolean, double, algebra.Matrix, double,
+     * algebra.Matrix) Uses default handle.
      * @param alpha the multiply by A.
      * @param a The A matrix.
      * @param beta To multiply by B.
@@ -367,14 +368,13 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
         if (m.getRowDimension() != getRowDimension() || m.getColumnDimension() != getColumnDimension())
             throw new MatrixDimensionMismatchException(m.getRowDimension(), m.getColumnDimension(), getRowDimension(), getColumnDimension());
 
-        Matrix mat = new Matrix(handle, m);
-        Matrix result = subtract(mat);
-        mat.close();
-        return result;
+        try (Matrix mat = new Matrix(handle, m)) {
+            return subtract(mat);
+        }
     }
 
     /**
-     * @see Matrix#subtract(org.apache.commons.math3.linear.RealMatrix) 
+     * @see Matrix#subtract(org.apache.commons.math3.linear.RealMatrix)
      *
      * @param other The other matrix to add.
      * @return The result of element-wise addition.
@@ -429,7 +429,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
 
     /**
      * Inserts anther matrix into this matrix at the given index.
-     * 
+     *
      * @param handle The handle with which to perform this operation.
      * @param other The matrix to be inserted
      * @param row the row in this matrix where the first row of the other matrix
@@ -451,16 +451,16 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     /**
      * @see Matrix#insert(processSupport.Handle, algebra.Matrix, int, int)
      * except with default handle.
-     * 
+     *
      * @param other
      * @param row
      * @param col
-     * @return 
+     * @return
      */
     public Matrix insert(Matrix other, int row, int col) {
         return insert(handle, other, row, col);
     }
-    
+
     /**
      * {@inheritDoc}
      */
@@ -547,9 +547,9 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     }
 
     /**
-     * Passes by reference.  Changes to the sub matrix will effect the original 
+     * Passes by reference. Changes to the sub matrix will effect the original
      * matrix and vice versa.
-     * 
+     *
      * {@inheritDoc}
      */
     @Override
@@ -558,7 +558,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
         Dimension dim = subMatrixDimensions(startRow, endRow, startColumn, endColumn);
 
         return new Matrix(
-                handle, 
+                handle,
                 data.subArray(index(startRow, startColumn), dim.width * colDist),
                 dim.height,
                 dim.width,
@@ -684,7 +684,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
 
         return new Matrix(handle, height, width);
     }
-    
+
     /**
      * {@inheritDoc}
      */
@@ -699,7 +699,6 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
 
         return copy;
     }
-    
 
     /**
      * {@inheritDoc}
@@ -750,17 +749,18 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     }
 
     /**
-     @see Matrix#getRow(int) 
+     * @see Matrix#getRow(int)
      */
     public double[] getRow(int row, Handle handle) throws OutOfRangeException {
         if (row < 0 || row >= height)
             throw new OutOfRangeException(row, 0, height);
 
         Matrix rowMatrix = getRowMatrix(row);
-        Matrix rowCopy = rowMatrix.copy();
-        double[] rowData = rowCopy.data.get(handle);
-        rowCopy.close();
-        return rowData;
+
+        try (Matrix rowCopy = rowMatrix.copy()) {
+            return rowCopy.data.get(handle);
+        }
+
     }
 
     /**
@@ -784,10 +784,8 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     }
 
     /**
-     * This method passes by reference,
-     * meaning changes to the column matrix will affect this matrix and vice
-     * versa.
-     * {@inheritDoc}
+     * This method passes by reference, meaning changes to the column matrix
+     * will affect this matrix and vice versa. {@inheritDoc}
      */
     @Override
     public Matrix getColumnMatrix(int column) throws OutOfRangeException {
@@ -797,7 +795,6 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
                 1);
     }
 
-    
     /**
      * {@inheritDoc}
      */
@@ -806,7 +803,6 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
         return new Vector(handle, data.subArray(index(0, column), height), 1);
     }
 
-    
     /**
      * {@inheritDoc}
      */
@@ -827,7 +823,6 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
         return data.dot(handle, new DSingleton(handle, 1), 0, width + 1);
     }
 
-    
     /**
      * {@inheritDoc}
      */
@@ -872,17 +867,17 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
      */
     @Override
     public Vector operate(RealVector v) throws DimensionMismatchException {
-        try(Vector temp = new Vector(handle, v.toArray())){
+        try (Vector temp = new Vector(handle, v.toArray())) {
             return operate(temp);
         }
     }
-    
+
     /**
-     * @see Matrix#operate(org.apache.commons.math3.linear.RealVector) 
+     * @see Matrix#operate(org.apache.commons.math3.linear.RealVector)
      */
     public Vector operate(Vector v) throws DimensionMismatchException {
         Vector result = new Vector(handle, height);
-        result.data.multMatVec(handle, false, height, width, 1, data, colDist, v.data, v.inc, 1, 1);
+        result.dArray().multMatVec(handle, false, height, width, 1, data, colDist, v.dArray(), v.inc, 1, 1);
         return result;
     }
 
@@ -931,7 +926,6 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
         data.set(handle, array, index(0, column));
     }
 
-    
     /**
      * {@inheritDoc}
      */
@@ -951,7 +945,6 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
         setColumn(column, matrix.getColumn(0));
     }
 
-    
     /**
      * {@inheritDoc}
      */
@@ -959,13 +952,13 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     public void setColumnVector(int column, RealVector vector) throws OutOfRangeException, MatrixDimensionMismatchException {
         setColumn(column, vector.toArray());
     }
-    
-    
+
     /**
-     * @see Matrix#setColumnVector(int, org.apache.commons.math3.linear.RealVector) 
+     * @see Matrix#setColumnVector(int,
+     * org.apache.commons.math3.linear.RealVector)
      */
     public void setColumnVector(int column, Vector vector) throws OutOfRangeException, MatrixDimensionMismatchException {
-        data.set(handle, vector.data, index(0, column), 0, 0, vector.inc, Math.min(height, vector.getDimension()));
+        data.set(handle, vector.dArray(), index(0, column), 0, 0, vector.inc, Math.min(height, vector.getDimension()));
     }
 
     /**
@@ -977,13 +970,13 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
         if (array.length != width)
             throw new MatrixDimensionMismatchException(array.length, 0, width, 0);
 
-        try(Vector temp = new Vector(handle, array)){
+        try (Vector temp = new Vector(handle, array)) {
             setRowVector(row, temp);
         }
     }
 
     /**
-     * @see Matrix#setRowMatrix(int, org.apache.commons.math3.linear.RealMatrix) 
+     * @see Matrix#setRowMatrix(int, org.apache.commons.math3.linear.RealMatrix)
      */
     public void setRowMatrix(int row, Matrix rowMatrix) throws OutOfRangeException, MatrixDimensionMismatchException {
         insert(rowMatrix, row, 0);
@@ -1004,12 +997,12 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     public void setRowVector(int row, RealVector vector) throws OutOfRangeException, MatrixDimensionMismatchException {
         setRow(row, vector.toArray());
     }
-    
+
     /**
-     * @see Matrix#setRowVector(int, org.apache.commons.math3.linear.RealVector) 
+     * @see Matrix#setRowVector(int, org.apache.commons.math3.linear.RealVector)
      */
     public void setRowVector(int row, Vector vector) throws OutOfRangeException, MatrixDimensionMismatchException {
-        data.set(handle, vector.data, index(row, 0), 0, colDist, vector.inc, Math.min(width, vector.getDimension()));
+        data.set(handle, vector.dArray(), index(row, 0), 0, colDist, vector.inc, Math.min(width, vector.getDimension()));
     }
 
     /**
@@ -1030,7 +1023,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     @Override
     public double walkInColumnOrder(RealMatrixChangingVisitor visitor) {
         double[] matrix = data.get(handle);
-        
+
         visitor.start(height, width, 0, height, 0, width);
 
         Arrays.setAll(matrix, i -> visitor.visit(rowIndex(i), columnIndex(i), matrix[i]));
@@ -1136,7 +1129,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
         double[] matrix = new double[sub.width * sub.height];
 
         visitor.start(height, width, 0, height, 0, width);
-        
+
         for (int toCol = 0; toCol <= sub.width; toCol++)
             data.get(handle, matrix, toCol * sub.height, index(0, toCol + startColumn), sub.height);
 
@@ -1181,10 +1174,9 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
      * matrix. Otherwise, a copy of the matrix is created and the operation is
      * performed on the copy.
      * </p>
-     * 
+     *
      * {@inheritDoc}
      */
-
     @Override
     public double getFrobeniusNorm() {
         Matrix copy = colDist == height ? this : copy();
@@ -1214,27 +1206,50 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
      */
     @Override
     public void close() {
-        if(colDist != height) throw new IllegalAccessError("You are cleaning data from a sub Matrix");
+        if (colDist != height)
+            throw new IllegalAccessError("You are cleaning data from a sub Matrix");
         data.close();
     }
 
     /**
      * Adds to this matrix the outer product of a and b.
+     *
      * @param a A column.
      * @param b A row
      * @return The outer product of a and b.
      */
-    public Matrix addOuterProduct(Vector a, Vector b){
-        
-        data.outerProd(handle, height, width, 1, a.data, a.inc, b.data, b.inc, colDist);
-        
+    public Matrix addOuterProduct(Vector a, Vector b) {
+
+        data.outerProd(handle, height, width, 1, a.dArray(), a.inc, b.dArray(), b.inc, colDist);
+
         return this;
     }
-    
-    
-    
-    public Vector asVectorCopy(){
-        return new Vector(handle, copy().data, 1);
+
+//    
+//    /**
+//     * A copy of this matrix as a vector in column major order.
+//     * @return A copy of this matrix as a vector in column major order.
+//     */
+//    public Vector asVectorCopy(){
+//        return new Vector(handle, copy().data, 1);
+//    }
+//    
+//    
+    /**
+     * An unmodifiable version of this matrix.
+     *
+     * @return An unmodifiable version of this matrix.
+     */
+    public unmodifiable.Matrix unmodifable() {
+        return new unmodifiable.Matrix(handle, data, height, width, colDist);
     }
-    
+
+    /**
+     * The underlying column major data.
+     *
+     * @return The underlying column major data.
+     */
+    public DArray drray() {
+        return data;
+    }
 }

@@ -1,7 +1,10 @@
 package main;
 
-import storage.DArray;
-import processSupport.Handle;
+import java.awt.Point;
+import java.awt.geom.Point2D;
+import java.util.Arrays;
+import array.DArray;
+import resourceManagement.Handle;
 
 /**
  * Tests the DArray class.
@@ -9,7 +12,7 @@ import processSupport.Handle;
  */
 public class DArrayTest {
 
-    public static Handle handle = new Handle();
+    public static Handle handle;
     
     /**
      * Runs the tests.
@@ -18,7 +21,7 @@ public class DArrayTest {
     public static void main(String[] args) {
 
         // Initialize the GPU handle for all operations
-        
+         handle = new Handle();
 
         // Run tests
         boolean allTestsPassed = true;
@@ -31,6 +34,7 @@ public class DArrayTest {
         allTestsPassed &= testMatrixMultiplication(handle);
         allTestsPassed &= testSubArray();
         allTestsPassed &= testSetAndGetByIndex();
+        allTestsPassed &= testAtan2(handle);
 
         // Cleanup GPU handle
         handle.close();
@@ -233,6 +237,51 @@ public class DArrayTest {
             return passed;
         } catch (Exception e) {
             System.err.println("Error in testSetAndGetByIndex: " + e.getMessage());
+            return false;
+        }
+    }
+    
+        /**
+     * Tests the DArray atan2() method.
+     * This method tests the a^tan2 functionality that computes angles from pairs of x, y coordinates.
+     * @param handle The GPU handle used for the test.
+     * @return true if the test passes, false otherwise.
+     */
+    private static boolean testAtan2(Handle handle) {
+        System.out.println("Testing DArray atan2() method...");
+        try {
+            
+            Point2D[] points = new Point2D[]{new Point(1,0), new Point(-1, 0), new Point(0, 1), new Point(0, -1)};
+                        
+            
+            double[] vectors = new double[2 * points.length];
+            for(int i = 0; i < points.length; i++){
+                vectors[2*i] = points[i].getX();
+                vectors[2*i + 1] = points[i].getY();                
+            }
+            
+            DArray input = new DArray(handle, vectors);
+            
+            double[] expectedAngles = new double[points.length];
+            Arrays.setAll(expectedAngles, i -> Math.atan2(points[i].getY(), points[i].getX()));                       
+            
+            DArray result = DArray.empty(points.length).atan2(input);
+            
+            
+            double[] angles = result.get(handle);
+            
+            System.out.println(Arrays.toString(angles));
+
+            input.close();
+            result.close();
+
+            
+            boolean passed = arraysEqual(angles, expectedAngles, 1e-9);
+            System.out.println("Test passed: " + passed);
+            return passed;
+            
+        } catch (Exception e) {
+            System.err.println("Error in testAtan2: " + e.getMessage());
             return false;
         }
     }

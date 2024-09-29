@@ -4,8 +4,8 @@ import java.awt.Point;
 import java.util.function.Consumer;
 
 import org.apache.commons.math3.exception.DimensionMismatchException;
-import processSupport.Handle;
-import storage.DArray2d;
+import resourceManagement.Handle;
+import array.DArray2d;
 
 /**
  * A class representing a batch of matrices stored in GPU memory, allowing
@@ -135,13 +135,13 @@ public class MatrixBatch {
      * @return The data for each sub matrix.
      */
     private static DArray2d getDarray(Matrix contains, Consumer<Point> step, int height, int width, int batchSize) {
-        storage.DArray[] arrays = new storage.DArray[batchSize];
+        array.DArray[] arrays = new array.DArray[batchSize];
 
         Point p = new Point(0, 0);
 
         for (int i = 0; i < batchSize; i++) {
             step.accept(p);
-            arrays[i] = contains.getSubMatrix(p.y, p.y + height, p.x, p.x + width).data;
+            arrays[i] = contains.getSubMatrix(p.y, p.y + height, p.x, p.x + width).drray();
         }
         return new DArray2d(contains.getHandle(), arrays);
     }

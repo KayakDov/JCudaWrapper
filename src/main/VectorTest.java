@@ -5,8 +5,8 @@ import algebra.Vector;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.stream.IntStream;
-import processSupport.Handle;
-import storage.DArray;
+import resourceManagement.Handle;
+import array.DArray;
 
 public class VectorTest {
 
