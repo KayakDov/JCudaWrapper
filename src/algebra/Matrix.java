@@ -1252,4 +1252,12 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     public DArray drray() {
         return data;
     }
+    
+    /**
+     * The underlying data of this matrix in a vector.
+     * @return The underlying data of this matrix in a vector.
+     */
+    public Vector asVector(){
+        return new Vector(handle, data, 1);
+    }
 }
