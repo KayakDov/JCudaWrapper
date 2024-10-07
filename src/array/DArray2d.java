@@ -1,28 +1,23 @@
 package array;
 
 import java.util.Arrays;
-import java.util.function.Function;
 import java.util.function.IntUnaryOperator;
-import jcuda.NativePointerObject;
 import jcuda.Pointer;
 import jcuda.cudaDataType;
 import jcuda.driver.CUdeviceptr;
 import jcuda.jcublas.JCublas2;
-import jcuda.jcublas.cublasFillMode;
 import jcuda.jcublas.cublasGemmAlgo;
 import jcuda.jcublas.cublasOperation;
 import jcuda.jcusolver.JCusolverDn;
 import jcuda.jcusolver.cusolverDnHandle;
 import jcuda.jcusolver.cusolverEigMode;
-import jcuda.jcusolver.gesvdjInfo;
 import jcuda.jcusolver.syevjInfo;
-import jcuda.runtime.JCuda;
-import jcuda.runtime.cudaMemcpyKind;
 import org.apache.commons.math3.exception.DimensionMismatchException;
 import resourceManagement.Handle;
 import static array.Array.checkNull;
 import static array.Array.checkPos;
 import static array.DArray.cpuPointer;
+import jcuda.jcublas.cublasFillMode;
 
 /**
  * Class for managing a batched 2D array of arrays (DArrays) on the GPU and
@@ -36,7 +31,9 @@ import static array.DArray.cpuPointer;
 public class DArray2d extends Array {
 
     private final int lengthOfArrays;
-
+    
+    
+    
     /**
      * An array of Arrays.
      *
@@ -181,8 +178,8 @@ public class DArray2d extends Array {
         // Perform the batched matrix-matrix multiplication using cuBLAS
         JCublas2.cublasDgemmBatched(
                 handle.get(), // cuBLAS handle
-                transA ? cublasOperation.CUBLAS_OP_T : cublasOperation.CUBLAS_OP_N, // Operation on A (transpose or not)
-                transB ? cublasOperation.CUBLAS_OP_T : cublasOperation.CUBLAS_OP_N, // Operation on B (transpose or not)
+                DArray.transpose(transA),
+                DArray.transpose(transB),
                 aRows, bCols, aColsBRows, // Number of columns of A / rows of B
                 DArray.cpuPointer(timesAB),
                 A.pointer, lda, // Leading dimension of A
@@ -190,6 +187,24 @@ public class DArray2d extends Array {
                 DArray.cpuPointer(timesResult), pointer, ldResult, // Leading dimension of result matrices
                 batchCount // Number of matrices to multiply
         );
+    }
+
+    /**
+     * Fill modes.  Use lower to indicate a lower triangle, upper to indicate an upper triangle, and full for full triangles.
+     */
+    public static enum Fill {
+        LOWER(cublasFillMode.CUBLAS_FILL_MODE_LOWER), UPPER(cublasFillMode.CUBLAS_FILL_MODE_UPPER), FULL(cublasFillMode.CUBLAS_FILL_MODE_FULL);
+
+        private int fillMode;
+
+        private Fill(int fillMode) {
+            this.fillMode = fillMode;
+        }
+
+        public int getFillMode() {
+            return fillMode;
+        }
+
     }
 
     /**
@@ -221,7 +236,7 @@ public class DArray2d extends Array {
      */
     public static void computeEigen(int height, DArray inputMatrices, int ldInput,
             DArray resultValues, DArray resultVectors, int ldResultVectors,
-            int batchCount, int cublasFillMode) {
+            int batchCount, Fill cublasFillMode) {
 
         cusolverDnHandle solverHandle = new cusolverDnHandle();
         JCusolverDn.cusolverDnCreate(solverHandle); // Create handle
@@ -233,7 +248,7 @@ public class DArray2d extends Array {
             JCusolverDn.cusolverDnDsyevjBatched(
                     solverHandle, // Handle to the cuSolver context
                     cusolverEigMode.CUSOLVER_EIG_MODE_VECTOR, // Compute both eigenvalues and eigenvectors
-                    cublasFillMode, // Indicates matrix is symmetric
+                    cublasFillMode.getFillMode(), // Indicates matrix is symmetric
                     height, // Size of each matrix
                     inputMatrices.pointer, // Pointer to input matrices in GPU memory
                     ldInput, // Leading dimension of input matrices
@@ -310,42 +325,22 @@ public class DArray2d extends Array {
             int lda, long strideA, DArray matB, int ldb, long strideB, double timesResult,
             DArray result, int ldResult, long strideResult, int batchCount) {
 
-        // Null checks for pointers
         checkNull(handle, matA, matB, result);
+        checkPos(aRows, bCols, ldb, ldResult);        
+        matA.checkAgainstLength(aRows * aColsBRows * batchCount - 1);
+        matB.checkAgainstLength(aColsBRows * bCols * batchCount - 1);
+        result.checkAgainstLength(aRows * bCols * batchCount - 1);
 
-        // Ensure dimensions and leading dimensions are positive
-        checkPos(aRows, bCols, ldb, ldResult);
-
-        // Ensure matrices are valid for the specified batch count
-        matA.checkAgainstLength(aRows * aColsBRows * batchCount);
-        matB.checkAgainstLength(aColsBRows * bCols * batchCount);
-        result.checkAgainstLength(aRows * bCols * batchCount);
-
-        // Perform the batched matrix-matrix multiplication
-        JCublas2.cublasGemmStridedBatchedEx(
+        
+        JCublas2.cublasDgemmStridedBatched(
                 handle.get(),
-                transA ? cublasOperation.CUBLAS_OP_T : cublasOperation.CUBLAS_OP_N,
-                transB ? cublasOperation.CUBLAS_OP_T : cublasOperation.CUBLAS_OP_N,
-                aRows, // Number of rows in A
-                bCols, // Number of columns in B
-                aColsBRows, // Number of columns in A (or rows in B)
-                cpuPointer(timesAB),
-                matA.pointer,
-                cudaDataType.CUDA_R_64F, // Data type for A
-                lda,
-                strideA,
-                matB.pointer,
-                cudaDataType.CUDA_R_64F, // Data type for B
-                ldb,
-                strideB,
-                cpuPointer(timesResult),
-                result.pointer,
-                cudaDataType.CUDA_R_64F, // Data type for result
-                ldResult,
-                strideResult,
-                batchCount,
-                cudaDataType.CUDA_R_64F, // Computation type (double precision)
-                cublasGemmAlgo.CUBLAS_GEMM_DEFAULT // Use default algorithm
+                DArray.transpose(transA), DArray.transpose(transB),
+                aRows, bCols, aColsBRows,                
+                cpuPointer(timesAB), 
+                matA.pointer, lda, strideA,                
+                matB.pointer, ldb, strideB,                
+                cpuPointer(timesResult), result.pointer, ldResult, strideResult,                
+                batchCount
         );
     }
 

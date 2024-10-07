@@ -1,6 +1,7 @@
 package algebra;
 
 import array.DArray;
+import array.DArray2d;
 import resourceManagement.Handle;
 import java.awt.Dimension;
 import java.util.Arrays;
@@ -289,7 +290,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     /**
      * @see Matrix#add(org.apache.commons.math3.linear.RealMatrix)
      * @param other The other matrix to add.
-     * @return The result of element-wise addition.
+     * @return A new matrix, the result of element-wise addition.
      */
     public Matrix add(Matrix other) {
         if (other.height != height || other.width != width)
@@ -1168,6 +1169,23 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     }
 
     /**
+     * A vector containing the dot product of each column and itself.
+     * @return A vector containing the dot product of each column and itself.
+     */
+    public Vector columnsSquared() {
+        Vector colsSquared = new Vector(handle, width);
+
+        DArray2d.multMatMatBatched(handle, true, false,
+                height, 1, 1,
+                1,
+                data, colDist, colDist,
+                data, colDist, colDist,
+                0, colsSquared.dArray(), 1, 1,
+                width);
+        return colsSquared;
+    }
+
+    /**
      * <p>
      * If the matrix is stored in column-major order with a column distance
      * equal to the matrix height, the operation is performed on the current
@@ -1179,8 +1197,11 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
      */
     @Override
     public double getFrobeniusNorm() {
-        Matrix copy = colDist == height ? this : copy();
-        return Math.sqrt(copy.data.dot(handle, copy.data, 1, 1));
+
+        try (Vector colsSq = columnsSquared()) {
+            return Math.sqrt(colsSq.getL1Norm());
+        }
+
     }
 
     /**
@@ -1249,15 +1270,62 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
      *
      * @return The underlying column major data.
      */
-    public DArray drray() {
+    public DArray dArray() {
         return data;
     }
-    
+
     /**
      * The underlying data of this matrix in a vector.
+     *
      * @return The underlying data of this matrix in a vector.
      */
-    public Vector asVector(){
+    public Vector asVector() {
         return new Vector(handle, data, 1);
     }
+
+    /**
+     * Creates a matrix from the underlying data in this matrix with a new
+     * height, width, and distance between columns. Note that if the distance
+     * between columns in the new matrix is less that in this matrix, the matrix
+     * will contain data that this one does not.
+     *
+     * @param newHieght The height of the new matrix.
+     * @param newWidth The width of the new matrix.
+     * @param newColDist The distance between columns of the new matrix. By
+     * setting the new column distance to be less than or greater than the old
+     * one, the new matrix may have more or fewer elements.
+     * @return A shallow copy of this matrix that has a different shape.
+     *
+     */
+    public Matrix newDimensions(int newHieght, int newWidth, int newColDist) {
+        return new Matrix(handle, data, newHieght, newWidth, newColDist);
+    }
+    
+    
+    /**
+     * Creates a matrix from the underlying data in this matrix with a new
+     * height, width, and distance between columns. Note that if the distance
+     * between columns in the new matrix is less that in this matrix, the matrix
+     * will contain data that this one does not.
+     *
+     * @param newHieght The height of the new matrix.  The width*colDist should
+     * be divisible by this number.
+     * @return A shallow copy of this matrix that has a different shape.
+     *
+     */
+    public Matrix newDimensions(int newHieght) {
+        return newDimensions(newHieght, size()/newHieght, newHieght);
+    }
+
+    /**
+     * The distance between the 1st element of each column in column major
+     * order.
+     *
+     * @return The distance between the first element of each column in column
+     * major order.
+     */
+    public int getColDist() {
+        return colDist;
+    }
+
 }

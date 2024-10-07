@@ -13,6 +13,7 @@ import org.apache.commons.math3.linear.RealVectorChangingVisitor;
 import org.apache.commons.math3.linear.RealVectorPreservingVisitor;
 import resourceManagement.Handle;
 import array.DArray;
+import array.DArray2d;
 import array.DSingleton;
 
 /**
@@ -223,6 +224,24 @@ public class Vector extends RealVector implements AutoCloseable {
     /**
      * Computes the element-wise product of this vector and another vector.
      *
+     * @param a The first vector.
+     * @param b The second vector.
+     * @see Vector#ebeMultiply(org.apache.commons.math3.linear.RealVector)
+     * @return A new vector containing the element-wise product of this vector
+     * and {@code v}.
+     * @throws DimensionMismatchException if the vectors have different lengths.
+     */
+    public Vector mapEbeMultiplyToSelf(Vector a, Vector b) {
+        checkVectorLength(a, b);
+
+        data.multSymBandMatVec(handle, true, getDimension(), 0, 1, a.data, a.inc, b.data, b.inc, 0, 1);
+
+        return this;
+    }
+
+    /**
+     * Computes the element-wise product of this vector and another vector.
+     *
      * @see Vector#ebeMultiply(org.apache.commons.math3.linear.RealVector)
      * @param v The other vector.
      * @return A new vector containing the element-wise product of this vector
@@ -232,11 +251,7 @@ public class Vector extends RealVector implements AutoCloseable {
     public Vector ebeMultiply(Vector v) {
         checkVectorLength(v);
 
-        Vector result = new Vector(handle, data.length);
-
-        result.data.multSymBandMatVec(handle, true, v.getDimension(), 0, 1, v.data, 1, data, inc, 1, 1);
-
-        return result;
+        return new Vector(handle, data.length).mapEbeMultiplyToSelf(this, v);
     }
 
     /**
@@ -247,6 +262,20 @@ public class Vector extends RealVector implements AutoCloseable {
         try (Vector temp = new Vector(handle, v.toArray())) {
             return ebeDivide(temp);
         }
+    }
+
+    /**
+     * A vector with every element raised to -1.
+     *
+     * @return A new vector with every element raised to -1.
+     */
+    public Vector ebeInvert() {
+        Vector inverse = new Vector(handle, getDimension()).fill(1);
+
+        inverse.data.solveTriangularBandedSystem(handle, true, false, false,
+                getDimension(), 0, data, 1, 1);
+
+        return inverse;
     }
 
     /**
@@ -261,10 +290,7 @@ public class Vector extends RealVector implements AutoCloseable {
     public Vector ebeDivide(Vector v) throws DimensionMismatchException {
         checkVectorLength(v);
 
-        try (Vector inverse = new Vector(handle, v.getDimension()).fill(1)) {
-
-            inverse.data.solveTriangularBandedSystem(handle, true, false, false,
-                    v.getDimension(), 0, v.data, 1, 1);
+        try (Vector inverse = ebeInvert()) {
 
             return ebeMultiply(inverse);
         }
@@ -295,9 +321,10 @@ public class Vector extends RealVector implements AutoCloseable {
      * @param v The vector to compare dimensions with.
      * @throws DimensionMismatchException if the vectors have different lengths.
      */
-    private void checkVectorLength(RealVector v) {
-        if (v.getDimension() != getDimension())
-            throw new DimensionMismatchException(v.getDimension(), getDimension());
+    private void checkVectorLength(RealVector... vec) {
+        for (RealVector v : vec)
+            if (v.getDimension() != getDimension())
+                throw new DimensionMismatchException(v.getDimension(), getDimension());
     }
 
     /**
@@ -340,8 +367,26 @@ public class Vector extends RealVector implements AutoCloseable {
      * {@inheritDoc}
      */
     @Override
-    public Vector getSubVector(int index, int length) throws NotPositiveException, OutOfRangeException {
-        return new Vector(handle, data.subArray(index * inc, length), inc);
+    public Vector getSubVector(int begin, int length) throws NotPositiveException, OutOfRangeException {
+        return getSubVector(begin, length, 1);
+    }
+
+    /**
+     * Returns a sub vector of this one. The vector is a shallow copy/ copy by
+     * reference, changes made to the new vector will affect this one and vice
+     * versa.
+     *
+     * @param begin Where the vector begins.
+     * @param length The length of the new vector.The number of elements in the vector.
+     * @param increment The stride step of the new vector.  For example, if this
+     * value is set to 2, then the new vector will contain every other element of
+     * this vector.
+     * @return A sub vector of this vector.
+     * @throws NotPositiveException
+     * @throws OutOfRangeException
+     */
+    public Vector getSubVector(int begin, int length, int increment) throws NotPositiveException, OutOfRangeException {
+        return new Vector(handle, data.subArray(begin * inc, inc*increment*length), inc*increment);
     }
 
     /**
@@ -414,17 +459,8 @@ public class Vector extends RealVector implements AutoCloseable {
     }
 
     /**
-     * Sets a portion of this vector to the contents of the given matrix.
-     * Specifically, the method inserts the columns of the matrix into this
-     * vector starting at the specified index and offsets each column by the
-     * height of the matrix.
-     *
-     * @param v the matrix whose columns are used to set the subvector in this
-     * vector
-     *
-     * @throws IndexOutOfBoundsException if the specified index or resulting
-     * subvector extends beyond the vector's bounds
-     *
+     * Sets a portion of this vector to the contents of the given Vector.*
+     * @param v The vector to copy from.
      */
     public void set(Vector v) {
         setSubVector(0, v);
@@ -730,7 +766,7 @@ public class Vector extends RealVector implements AutoCloseable {
      */
     public Matrix outerProduct(Vector v) {
         Matrix outerProd = new Matrix(handle, getDimension(), v.getDimension()).fill(0);
-        outerProd.drray().outerProd(handle, getDimension(), v.getDimension(), 1, data, inc, v.data, v.inc, getDimension());
+        outerProd.dArray().outerProd(handle, getDimension(), v.getDimension(), 1, data, inc, v.data, v.inc, getDimension());
         return outerProd;
     }
 
@@ -749,7 +785,7 @@ public class Vector extends RealVector implements AutoCloseable {
      */
     public Vector projection(Vector v) throws DimensionMismatchException, MathArithmeticException {
         double[] dots = new double[2];
-        
+
         try (Handle dotHandle = new Handle()) {
             data.dot(dotHandle, v.data, v.inc, inc, dots, 0);
             v.data.dot(handle, v.data, v.inc, inc, dots, 1);
@@ -1085,13 +1121,80 @@ public class Vector extends RealVector implements AutoCloseable {
         return new Matrix(handle, data, 1, getDimension(), inc);
     }
 
+    /**
+     * An unmodifiable version of this matrix.
+     *
+     * @return
+     */
     public unmodifiable.Vector unmodifiable() {
         return new unmodifiable.Vector(handle, data, inc);
     }
 
+    /**
+     * The data underlying this vector.
+     *
+     * @return The underlying data from this vector.
+     */
     public DArray dArray() {
         return data;
     }
+
+    /**
+     * A matrix representing the data underlying this Vector. Note, depending on
+     * inc and colDist, the new matrix may have more or fewere elements than
+     * this vector.
+     *
+     * @param height The height of the new matrix.
+     * @param width The width of the new matrix.
+     * @param colDist The disance between the first element of each column.
+     * @return
+     */
+    public Matrix asMatrix(int height, int width, int colDist) {
+        return new Matrix(handle, data, height, width, colDist);
+    }
     
     
+    /**
+     * A matrix representing the data underlying this Vector. Note, depending on
+     * inc and colDist, the new matrix may have more or fewere elements than
+     * this vector.
+     *
+     * @param height The height of the new matrix. It should be divisible by the
+     * number of elements in the underlying data.
+     * @return A matrix containing the elements in the underlying data of this
+     * vector.
+     */
+    public Matrix asMatrix(int height) {
+        return new Matrix(handle, data, height, data.length/height, height);
+    }
+
+    /**
+     * The handle for this matrix.
+     *
+     * @return The handle for this matrix.
+     */
+    public Handle getHandle() {
+        return handle;
+    }
+
+    /**
+     * Batch vector vector dot product. The result vector is set as the dot
+     * product of a and b.
+     *
+     * @param a The first vector. A sub vector of a matrix or greater vector.
+     * @param aStride The increment to step to get to the next vector.
+     * @param b The second vector. A sub vector of a matrix or greater vector.
+     * @param bStride The increment to step to get to the next vector.
+     * @param result Where the result is to be stored.
+     */
+    public static void batchVecVecMult(Vector a, int aStride, Vector b, int bStride, Vector result) {
+        DArray2d.multMatMatBatched(a.getHandle(), false, true,
+                1, a.getDimension(), 1,
+                1,
+                a.data, a.inc, aStride,
+                b.data, b.inc, bStride,
+                0, result.data, result.inc, 1,
+                result.getDimension());
+    }
+
 }

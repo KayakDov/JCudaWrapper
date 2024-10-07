@@ -30,7 +30,7 @@ import array.DArray2d;
  *
  * @author E. Dov Neimand
  */
-public class MatrixBatch {
+public class MatrixBatch implements AutoCloseable {
 
     /**
      * The number of rows (height) of each matrix in the batch.
@@ -141,7 +141,7 @@ public class MatrixBatch {
 
         for (int i = 0; i < batchSize; i++) {
             step.accept(p);
-            arrays[i] = contains.getSubMatrix(p.y, p.y + height, p.x, p.x + width).drray();
+            arrays[i] = contains.getSubMatrix(p.y, p.y + height, p.x, p.x + width).dArray();
         }
         return new DArray2d(contains.getHandle(), arrays);
     }
@@ -271,4 +271,16 @@ public class MatrixBatch {
         copy.transposeForOperations = transposeForOperations;
         return copy;
     }
+
+    /**
+     * closes the underlying array of pointers to data. This should only be
+     * called if the resource is not being used by any other objects. This
+     * method does not close the data being pointed to by the elements of the
+     * array of pointers.
+     */
+    @Override
+    public void close() {
+        arrays.close();
+    }
+    
 }

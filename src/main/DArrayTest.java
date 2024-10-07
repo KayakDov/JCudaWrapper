@@ -1,40 +1,45 @@
 package main;
 
+import algebra.Matrix;
 import java.awt.Point;
 import java.awt.geom.Point2D;
 import java.util.Arrays;
 import array.DArray;
+import array.DArray2d;
 import resourceManagement.Handle;
 
 /**
  * Tests the DArray class.
+ *
  * @author E. Dov Neimand
  */
 public class DArrayTest {
 
     public static Handle handle;
-    
+
     /**
      * Runs the tests.
+     *
      * @param args Not used.
      */
     public static void main(String[] args) {
 
         // Initialize the GPU handle for all operations
-         handle = new Handle();
+        handle = new Handle();
 
         // Run tests
         boolean allTestsPassed = true;
         allTestsPassed &= testConstructorAndGet();
         allTestsPassed &= testSet();
         allTestsPassed &= testCopy();
-        allTestsPassed &= testDotProduct(handle);
-        allTestsPassed &= testAddToMe(handle);
-        allTestsPassed &= testMultMe(handle);
-        allTestsPassed &= testMatrixMultiplication(handle);
+        allTestsPassed &= testDotProduct();
+        allTestsPassed &= testAddToMe();
+        allTestsPassed &= testMultMe();
+        allTestsPassed &= testMatrixMultiplication();
         allTestsPassed &= testSubArray();
         allTestsPassed &= testSetAndGetByIndex();
-        allTestsPassed &= testAtan2(handle);
+        allTestsPassed &= testAtan2();
+        allTestsPassed &= testMultMatMatBatched();
 
         // Cleanup GPU handle
         handle.close();
@@ -48,31 +53,30 @@ public class DArrayTest {
 
     private static boolean arraysEqual(double[] actual, double[] expected, double tolerance) {
         if (actual.length != expected.length) return false;
-        
-        for (int i = 0; i < actual.length; i++) 
+
+        for (int i = 0; i < actual.length; i++)
             if (Math.abs(actual[i] - expected[i]) > tolerance) return false;
-        
+
         return true;
     }
 
-    
     private static boolean testConstructorAndGet() {
         System.out.println("Testing DArray constructor and get()...");
         try {
-        
+
             double[] values = {1.0, 2.0, 3.0, 4.0, 5.0};
-            
+
             DArray dArray = new DArray(handle, values);
-            
+
             double[] result = dArray.get(handle);
-            
+
             boolean passed = arraysEqual(result, values, 1e-9);
-            
+
             System.out.println("Test passed: " + passed);
-            
+
             dArray.close();
             return passed;
-        
+
         } catch (Exception e) {
             System.err.println("Error in testConstructorAndGet: " + e.getMessage());
             return false;
@@ -84,7 +88,7 @@ public class DArrayTest {
         try {
             double[] initialValues = {1.0, 2.0, 3.0, 4.0, 5.0};
             double[] result;
-            
+
             try (DArray dArray = new DArray(handle, initialValues)) {
                 double[] newValues = {6.0, 7.0, 8.0};
                 dArray.set(handle, newValues, 2);
@@ -118,11 +122,11 @@ public class DArrayTest {
         } catch (Exception e) {
             System.err.println("Error in testCopy: " + e.getMessage());
             throw e;
-            
+
         }
     }
 
-    private static boolean testDotProduct(Handle handle) {
+    private static boolean testDotProduct() {
         System.out.println("Testing DArray dot() method...");
         try {
             DArray dArray1 = new DArray(handle, 1.0, 2.0, 3.0, 4.0, 5.0);
@@ -142,7 +146,7 @@ public class DArrayTest {
         }
     }
 
-    private static boolean testAddToMe(Handle handle) {
+    private static boolean testAddToMe() {
         System.out.println("Testing DArray addToMe() method...");
         try {
             DArray dArray1 = new DArray(handle, 1.0, 2.0, 3.0, 4.0, 5.0);
@@ -163,7 +167,7 @@ public class DArrayTest {
         }
     }
 
-    private static boolean testMultMe(Handle handle) {
+    private static boolean testMultMe() {
         System.out.println("Testing DArray multMe() method...");
         try {
             DArray dArray = new DArray(handle, 6.0, 6.0, 9.0, 9.0, 9.0);
@@ -182,11 +186,11 @@ public class DArrayTest {
         }
     }
 
-    private static boolean testMatrixMultiplication(Handle handle) {
+    private static boolean testMatrixMultiplication() {
         System.out.println("Testing DArray multMatMat() method...");
         try {
-            DArray a = new DArray(handle, 1, 2,   3, 4,   5, 6);  // A is 2x3
-            DArray b = new DArray(handle, 7, 8, 9,   10, 11, 12); // B is 3x2
+            DArray a = new DArray(handle, 1, 2, 3, 4, 5, 6);  // A is 2x3
+            DArray b = new DArray(handle, 7, 8, 9, 10, 11, 12); // B is 3x2
             DArray c = DArray.empty(4);           // C is 2x2
 
             c.multMatMat(handle, false, false, 2, 2, 3, 1, a, 2, b, 3, 0, 2);
@@ -240,49 +244,90 @@ public class DArrayTest {
             return false;
         }
     }
-    
-        /**
-     * Tests the DArray atan2() method.
-     * This method tests the a^tan2 functionality that computes angles from pairs of x, y coordinates.
+
+    /**
+     * Tests the DArray atan2() method. This method tests the a^tan2
+     * functionality that computes angles from pairs of x, y coordinates.
+     *
      * @param handle The GPU handle used for the test.
      * @return true if the test passes, false otherwise.
      */
-    private static boolean testAtan2(Handle handle) {
+    private static boolean testAtan2() {
         System.out.println("Testing DArray atan2() method...");
         try {
-            
-            Point2D[] points = new Point2D[]{new Point(1,0), new Point(-1, 0), new Point(0, 1), new Point(0, -1)};
-                        
-            
+
+            Point2D[] points = new Point2D[]{new Point(1, 0), new Point(-1, 0), new Point(0, 1), new Point(0, -1)};
+
             double[] vectors = new double[2 * points.length];
-            for(int i = 0; i < points.length; i++){
-                vectors[2*i] = points[i].getX();
-                vectors[2*i + 1] = points[i].getY();                
+            for (int i = 0; i < points.length; i++) {
+                vectors[2 * i] = points[i].getX();
+                vectors[2 * i + 1] = points[i].getY();
             }
-            
+
             DArray input = new DArray(handle, vectors);
-            
+
             double[] expectedAngles = new double[points.length];
-            Arrays.setAll(expectedAngles, i -> Math.atan2(points[i].getY(), points[i].getX()));                       
-            
+            Arrays.setAll(expectedAngles, i -> Math.atan2(points[i].getY(), points[i].getX()));
+
             DArray result = DArray.empty(points.length).atan2(input);
-            
-            
+
             double[] angles = result.get(handle);
-            
+
             System.out.println(Arrays.toString(angles));
 
             input.close();
             result.close();
 
-            
             boolean passed = arraysEqual(angles, expectedAngles, 1e-9);
             System.out.println("Test passed: " + passed);
             return passed;
-            
+
         } catch (Exception e) {
             System.err.println("Error in testAtan2: " + e.getMessage());
             return false;
         }
     }
+
+    public static boolean testMultMatMatBatched() {
+
+        System.out.println("Testing DArray mat mat mult batched method...");
+        
+        int aRows = 2;
+        int aColsBRows = 2;
+        int bCols = 2;
+        int batchCount = 2;
+
+        double timesAB = 1.0;
+        double timesResult = 0.0;
+
+        int lda = aRows;
+        int ldb = aColsBRows;
+        int ldResult = aRows;
+
+        long strideA = aRows * aColsBRows;
+        long strideB = aColsBRows * bCols;
+        long strideResult = aRows * bCols;
+
+        DArray matA = Matrix.identity(aRows, handle).asVector().append(Matrix.identity(aRows, handle).asVector()).dArray();
+        DArray matB = Matrix.identity(bCols, handle).asVector().append(Matrix.identity(aRows, handle).asVector()).dArray();
+        DArray result = DArray.empty(aRows * bCols + aRows * bCols);
+
+        DArray expected = Matrix.identity(aRows, handle).asVector().append(Matrix.identity(aRows, handle).asVector()).dArray();
+
+        DArray2d.multMatMatBatched(
+                handle, false, false,
+                aRows, aColsBRows, bCols,
+                timesAB, 
+                matA, lda, strideA,
+                matB, ldb, strideB,
+                timesResult, result, ldResult, strideResult,
+                batchCount
+        );
+        
+        boolean passed = arraysEqual(expected.get(handle), result.get(handle), 1e-4);
+        System.out.println("Test passed: " + passed);
+        return passed;
+
+    }
+
 }

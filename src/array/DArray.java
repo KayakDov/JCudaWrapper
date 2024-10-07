@@ -1,20 +1,15 @@
 package array;
 
-import algebra.Matrix;
 import resourceManagement.Handle;
 import java.util.Arrays;
 import jcuda.Pointer;
 import jcuda.Sizeof;
-import jcuda.cudaDataType;
 import jcuda.driver.CUdeviceptr;
-import jcuda.driver.CUfunction;
-import jcuda.driver.CUmodule;
-import jcuda.driver.JCudaDriver;
 import jcuda.jcublas.JCublas2;
 import jcuda.jcublas.cublasDiagType;
 import jcuda.jcublas.cublasFillMode;
-import jcuda.jcublas.cublasGemmAlgo;
 import jcuda.jcublas.cublasOperation;
+import jcuda.jcublas.cublasStatus;
 
 /**
  * This class provides functionalities to create and manipulate double arrays on
@@ -241,12 +236,13 @@ public class DArray extends Array {
 
     /**
      * An unmodifiable shallow copy of this array.
+     *
      * @return An unmodifiable shallow copy of this array.
      */
-    public array.DArray unmodifiable(){
+    public array.DArray unmodifiable() {
         return new unmodifiable.DArray(pointer, length);
     }
-    
+
     /**
      * A sub array of this array. Note, this is not a copy and changes to this
      * array will affect the sub array and vice versa. The length of the new
@@ -342,8 +338,7 @@ public class DArray extends Array {
 
         return JCublas2.cublasDgeam(
                 handle.get(),
-                transA ? cublasOperation.CUBLAS_OP_T : cublasOperation.CUBLAS_OP_N,
-                transB ? cublasOperation.CUBLAS_OP_T : cublasOperation.CUBLAS_OP_N,
+                transpose(transA), transpose(transB),
                 heightA, widthA, cpuPointer(alpha), a.pointer, lda,
                 cpuPointer(beta),
                 b == null ? null : b.pointer,
@@ -418,6 +413,44 @@ public class DArray extends Array {
         //I try to put the result on the host.
         checkNull(handle, result);
         JCublas2.cublasDnrm2(handle.get(), length, pointer, inc, Pointer.to(result).withByteOffset(toIndex * Sizeof.DOUBLE));
+    }
+
+    public static void main(String[] args) {
+        Handle handle = new Handle();
+        
+        DArray array = new DArray(handle, 3, 4);
+
+        DArray resultGPU = empty(1);
+        double[] resultCPU = new double[1];
+        
+        int status = JCublas2.cublasDnrm2(
+                handle.get(),
+                array.length, 
+                array.pointer,
+                1, 
+                resultGPU.pointer
+        );
+
+        
+        if (status != cublasStatus.CUBLAS_STATUS_SUCCESS) {
+            throw new RuntimeException("cublasDnrm2 failed with error code: " + status);
+        }
+
+        
+        resultGPU.get(handle, resultCPU, 0, 0, 1);
+        
+        System.out.println("Result from GPU: " + resultCPU[0]);
+
+        
+        JCublas2.cublasDnrm2(
+                handle.get(),
+                array.length,
+                array.pointer,
+                1,
+                Pointer.to(resultCPU) 
+        );
+        
+        System.out.println("Result from CPU: " + resultCPU[0]);
     }
 
     /**
@@ -654,7 +687,7 @@ public class DArray extends Array {
     public DArray multBandMatVec(Handle handle, boolean transposeA, int rowsA, int colsA, int subDiagonalsA, int superDiagonalA, double timesA, DArray Ma, int ldm, DArray x, int incX, double timesThis, int inc) {
         JCublas2.cublasDgbmv(
                 handle.get(),
-                transposeA ? cublasOperation.CUBLAS_OP_T : cublasOperation.CUBLAS_OP_N,
+                transpose(transposeA),
                 rowsA,
                 colsA,
                 subDiagonalsA,
@@ -722,7 +755,7 @@ public class DArray extends Array {
         JCublas2.cublasDtbsv(
                 handle.get(),
                 isUpper ? cublasFillMode.CUBLAS_FILL_MODE_UPPER : cublasFillMode.CUBLAS_FILL_MODE_LOWER, // Upper or lower triangular matrix
-                transposeA ? cublasOperation.CUBLAS_OP_T : cublasOperation.CUBLAS_OP_N, // Whether to transpose A
+                transpose(transposeA),
                 onesOnDiagonal ? cublasDiagType.CUBLAS_DIAG_UNIT : cublasDiagType.CUBLAS_DIAG_NON_UNIT, // Whether A is unit or non-unit triangular
                 rowsA, // Number of rows/columns in A
                 nonPrimaryDiagonals, // Number of subdiagonals/superdiagonals
@@ -961,26 +994,13 @@ public class DArray extends Array {
         b.checkAgainstLength(bCols * ldb - 1);
         checkAgainstLength(aRows * bCols - 1);
 
-        // Check the transpose options and set the corresponding CUBLAS operations.
-        int transA = transposeA ? cublasOperation.CUBLAS_OP_T : cublasOperation.CUBLAS_OP_N;
-        int transB = transposeB ? cublasOperation.CUBLAS_OP_T : cublasOperation.CUBLAS_OP_N;
-
-        // Perform matrix multiplication using JCublas2
         JCublas2.cublasDgemm(
                 handle.get(), // cublas handle
-                transA, // Transpose operation for A
-                transB, // Transpose operation for B
-                aRows, // Number of rows in matrix A
-                bCols, // Number of columns in matrix B
-                aCols, // Number of columns in matrix A
-                cpuPointer(timesAB), // Scalar to multiply with A*B
-                a.pointer, // Matrix A (GPU pointer)
-                lda, // Leading dimension of A
-                b.pointer, // Matrix B (GPU pointer)
-                ldb, // Leading dimension of B
-                cpuPointer(timesCurrent), // Scalar to multiply with the current matrix in DArray (this)
-                pointer, // Matrix C (the result matrix, stored in this DArray)
-                ldc // Leading dimension of C
+                transpose(transposeA), transpose(transposeB),
+                aRows, bCols,  aCols, 
+                cpuPointer(timesAB), a.pointer, lda, 
+                b.pointer, ldb, cpuPointer(timesCurrent), 
+                pointer, ldc
         );
     }
 
@@ -1046,18 +1066,12 @@ public class DArray extends Array {
 
         JCublas2.cublasDgeam(
                 handle.get(),
-                transA ? cublasOperation.CUBLAS_OP_T : cublasOperation.CUBLAS_OP_N,
-                transB ? cublasOperation.CUBLAS_OP_T : cublasOperation.CUBLAS_OP_N,
-                height,
-                width,
-                cpuPointer(alpha),
-                a.pointer,
-                lda,
-                cpuPointer(beta),
-                b.pointer,
-                ldb,
-                pointer,
-                ldc);
+                transpose(transA), transpose(transB),
+                height, width,
+                cpuPointer(alpha), a.pointer, lda,
+                cpuPointer(beta), b.pointer, ldb,
+                pointer, ldc
+        );
 
         return this;
     }
@@ -1087,11 +1101,9 @@ public class DArray extends Array {
     /**
      * TODO: put a version of this in the matrix class.
      *
-     * Performs symmetric batch matrix-matrix multiplication using
-     * cublasDsyrkBatched.
+     * Performs symmetric matrix-matrix multiplication using.
      *
-     * Computes this = A * A^T + timesThis * this for each matrix in the batch,
-     * ensuring C is symmetric.
+     * Computes this = A * A^T + timesThis * this, ensuring C is symmetric.
      *
      * @param handle CUBLAS handle for managing the operation.
      * @param transpose
@@ -1122,15 +1134,11 @@ public class DArray extends Array {
         JCublas2.cublasDsyrk(
                 handle.get(),
                 uplo,
-                transpose ? cublasOperation.CUBLAS_OP_N : cublasOperation.CUBLAS_OP_T, // Normal operation (no transpose)
-                resultRowsCols,
-                cols,
-                cpuPointer(alpha),
-                a.pointer,
-                lda,
-                cpuPointer(alpha),
-                pointer,
-                ldThis
+                transpose(transpose),
+                resultRowsCols, cols,
+                cpuPointer(alpha), a.pointer, lda,
+                cpuPointer(alpha), 
+                pointer, ldThis
         );
     }
 
@@ -1144,16 +1152,28 @@ public class DArray extends Array {
      * The x-value of each vector is at index 2*i and the y-value is at index
      * 2*i + 1.
      *
-     * @param from An array of consecutive x, y values. 
+     * @param from An array of consecutive x, y values.
      * @return A DArray containing the computed angles (in radians) for each
      * vector. The size of the returned DArray is half the length of the input
      * vectors since each angle corresponds to one pair of (x, y) values.
      */
     public DArray atan2(DArray from) {
-                
-        Kernel kernel = new Kernel("atan2.ptx", "atan2xy", length);        
+
+        Kernel kernel = new Kernel("atan2.ptx", "atan2xy", length);
         return kernel.map(from, this);
-        
+
     }
 
+    
+    private final static int transpose = cublasOperation.CUBLAS_OP_T;
+    private final static int dontTrans = cublasOperation.CUBLAS_OP_N;
+
+    /**
+     * A mapping from boolean transpose to the corresponding cuda integer.
+     * @param t True for transpose and false to not transpose.
+     * @return An integer representing yes or no on a transpose operation.
+     */
+    static int transpose(boolean t){
+        return t?transpose:dontTrans;
+    }
 }
