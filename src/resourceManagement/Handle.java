@@ -3,6 +3,8 @@ package resourceManagement;
 import java.lang.ref.Cleaner;
 import jcuda.jcublas.JCublas2;
 import jcuda.jcublas.cublasHandle;
+import jcuda.jcusolver.JCusolverDn;
+import jcuda.jcusolver.cusolverDnHandle;
 import jcuda.runtime.JCuda;
 import jcuda.runtime.cudaStream_t;
 
@@ -40,8 +42,8 @@ public class Handle implements AutoCloseable {
     /**
      * Cleanable resource for the CUDA stream, used to ensure the stream is destroyed when no longer needed.
      */
-    private final Cleaner.Cleanable cleanableStream;
-
+    private final Cleaner.Cleanable cleanableStream;       
+    
     /**
      * The CUBLAS handle for managing CUBLAS operations.
      */
@@ -101,6 +103,34 @@ public class Handle implements AutoCloseable {
     public void synch(){
         JCuda.cudaStreamSynchronize(stream);
     }
+    
+    private Cleaner.Cleanable cleanableSolverHandle;
+
+    
+    /**
+     * The cuSolver handle for managing cuSolver operations.
+     */
+    private cusolverDnHandle solverHandle;
+
+
+    /**
+     * Returns the cuSOLVER handle associated with the stream, creating it if necessary.
+     *
+     * @return The {@link cusolverDnHandle} for performing cuSOLVER operations.
+     */
+    public cusolverDnHandle solverHandle() {
+        if(solverHandle == null){
+            solverHandle = new cusolverDnHandle();
+            JCusolverDn.cusolverDnCreate(solverHandle);
+            JCusolverDn.cusolverDnSetStream(solverHandle, stream);
+            cleanableSolverHandle = ResourceDealocator.register(this, 
+                    hand -> JCusolverDn.cusolverDnDestroy(hand), solverHandle);
+
+        }
+        return solverHandle;
+    }
+    
+    
     /**
      * Closes the handle and stream, ensuring they are cleaned up.
      * This method is automatically called when the object is used in a try-with-resources statement.
@@ -110,6 +140,8 @@ public class Handle implements AutoCloseable {
     public void close() {
         synch();
         cleanableHandle.clean();  // Clean up the CUBLAS handle
+        if(solverHandle != null) cleanableSolverHandle.clean();
         cleanableStream.clean();  // Clean up the CUDA stream
+        
     }
 }

@@ -30,7 +30,7 @@ import array.DArray2d;
  *
  * @author E. Dov Neimand
  */
-public class MatrixBatch implements AutoCloseable {
+public class MatrixBatchPointers implements AutoCloseable {
 
     /**
      * The number of rows (height) of each matrix in the batch.
@@ -70,7 +70,7 @@ public class MatrixBatch implements AutoCloseable {
      * @param arrays The underlying data arrays that store the batch of
      * matrices.
      */
-    public MatrixBatch(int height, int width, int colDist, DArray2d arrays) {
+    public MatrixBatchPointers(int height, int width, int colDist, DArray2d arrays) {
         this.height = height;
         this.width = width;
         this.colDist = colDist;
@@ -88,7 +88,7 @@ public class MatrixBatch implements AutoCloseable {
      * @param width The width of each sub matrix.
      * @param batchSize The number of sub matrices.
      */
-    public MatrixBatch(Matrix contains, Consumer<Point> step, int height, int width, int batchSize) {
+    public MatrixBatchPointers(Matrix contains, Consumer<Point> step, int height, int width, int batchSize) {
 
         this(
                 height,
@@ -109,7 +109,7 @@ public class MatrixBatch implements AutoCloseable {
      * @param height The height of each sub matrix.
      * @param width The width of each sub matrix.
      */
-    public MatrixBatch(Matrix contains, int downStride, int rightStride, int height, int width) {
+    public MatrixBatchPointers(Matrix contains, int downStride, int rightStride, int height, int width) {
 
         this(contains, p -> {
             p.y += downStride;
@@ -169,7 +169,7 @@ public class MatrixBatch implements AutoCloseable {
      * @throws ArrayIndexOutOfBoundsException If the sizes of the matrix batches
      * A, B, and this batch do not match.
      */
-    public MatrixBatch addToMeMatMatMult(Handle handle, double timesAB, MatrixBatch a, MatrixBatch b, double timesThis) {
+    public MatrixBatchPointers addToMeMatMatMult(Handle handle, double timesAB, MatrixBatchPointers a, MatrixBatchPointers b, double timesThis) {
         // Ensure the dimensions are compatible for matrix multiplication
         if (a.width != b.height) {
             throw new DimensionMismatchException(a.width, b.height);
@@ -266,8 +266,8 @@ public class MatrixBatch implements AutoCloseable {
      *
      * @return A shallow copy of this batch.
      */
-    public MatrixBatch shallowCopy() {
-        MatrixBatch copy = new MatrixBatch(height, width, colDist, arrays);
+    public MatrixBatchPointers shallowCopy() {
+        MatrixBatchPointers copy = new MatrixBatchPointers(height, width, colDist, arrays);
         copy.transposeForOperations = transposeForOperations;
         return copy;
     }

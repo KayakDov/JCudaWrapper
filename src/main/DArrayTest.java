@@ -1,12 +1,16 @@
 package main;
 
 import algebra.Matrix;
+import algebra.Vector;
 import java.awt.Point;
 import java.awt.geom.Point2D;
 import java.util.Arrays;
 import array.DArray;
 import array.DArray2d;
+import array.IArray;
+import resourceManagement.EigenSupport;
 import resourceManagement.Handle;
+import resourceManagement.JacobiParams;
 
 /**
  * Tests the DArray class.
@@ -29,17 +33,18 @@ public class DArrayTest {
 
         // Run tests
         boolean allTestsPassed = true;
-        allTestsPassed &= testConstructorAndGet();
-        allTestsPassed &= testSet();
-        allTestsPassed &= testCopy();
-        allTestsPassed &= testDotProduct();
-        allTestsPassed &= testAddToMe();
-        allTestsPassed &= testMultMe();
-        allTestsPassed &= testMatrixMultiplication();
-        allTestsPassed &= testSubArray();
-        allTestsPassed &= testSetAndGetByIndex();
-        allTestsPassed &= testAtan2();
-        allTestsPassed &= testMultMatMatBatched();
+        allTestsPassed = testConstructorAndGet()
+                & testSet()
+                & testCopy()
+                & testDotProduct()
+                & testAddToMe()
+                & testMultMe()
+                & testMatrixMultiplication()
+                & testSubArray()
+                & testSetAndGetByIndex()
+                & testAtan2()
+                & testMultMatMatBatched()
+                & testEigen();
 
         // Cleanup GPU handle
         handle.close();
@@ -291,7 +296,7 @@ public class DArrayTest {
     public static boolean testMultMatMatBatched() {
 
         System.out.println("Testing DArray mat mat mult batched method...");
-        
+
         int aRows = 2;
         int aColsBRows = 2;
         int bCols = 2;
@@ -304,9 +309,9 @@ public class DArrayTest {
         int ldb = aColsBRows;
         int ldResult = aRows;
 
-        long strideA = aRows * aColsBRows;
-        long strideB = aColsBRows * bCols;
-        long strideResult = aRows * bCols;
+        int strideA = aRows * aColsBRows;
+        int strideB = aColsBRows * bCols;
+        int strideResult = aRows * bCols;
 
         DArray matA = Matrix.identity(aRows, handle).asVector().append(Matrix.identity(aRows, handle).asVector()).dArray();
         DArray matB = Matrix.identity(bCols, handle).asVector().append(Matrix.identity(aRows, handle).asVector()).dArray();
@@ -317,17 +322,58 @@ public class DArrayTest {
         DArray2d.multMatMatBatched(
                 handle, false, false,
                 aRows, aColsBRows, bCols,
-                timesAB, 
+                timesAB,
                 matA, lda, strideA,
                 matB, ldb, strideB,
                 timesResult, result, ldResult, strideResult,
                 batchCount
         );
-        
+
         boolean passed = arraysEqual(expected.get(handle), result.get(handle), 1e-4);
         System.out.println("Test passed: " + passed);
         return passed;
 
+    }
+
+    public static boolean testEigen() {
+
+        System.out.println("Testing DArray eigen batched method...");
+
+        Matrix m = new Matrix(handle, 3, 6);
+        m.dArray().set(handle, new double[]{
+            // First matrix (symmetric)
+            4.0, 1.0, 1.0,
+            1.0, 3.0, 0.0,
+            1.0, 0.0, 2.0,
+            // Second matrix (symmetric)
+            2.0, 0.0, 1.0,
+            0.0, 1.0, 0.0,
+            1.0, 0.0, 3.0
+        });
+
+        Vector resultValues = new Vector(handle, m.getWidth());
+
+        System.out.println(m.toString());
+        System.out.println(resultValues.toString());
+        
+        EigenSupport es = new EigenSupport(handle, m, resultValues, 2);
+        es.compute(m, resultValues);
+
+        double[] computedEigenvalues = resultValues.toArray();
+
+        // Expected eigenvalues for the given input matrices (manually calculated or from reference library)
+        double[] expectedEigenvalues = {
+            // Eigenvalues for the first matrix
+            5.372, 3.0, 0.628,
+            // Eigenvalues for the second matrix
+            3.414, 1.0, 1.586
+        };
+
+        boolean pass = arraysEqual(computedEigenvalues, expectedEigenvalues, 1e-2);
+
+        System.out.println("Test passed: " + pass);
+
+        return pass;
     }
 
 }

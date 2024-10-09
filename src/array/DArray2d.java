@@ -18,6 +18,8 @@ import static array.Array.checkNull;
 import static array.Array.checkPos;
 import static array.DArray.cpuPointer;
 import jcuda.jcublas.cublasFillMode;
+import jcuda.runtime.JCuda;
+import resourceManagement.JacobiParams;
 
 /**
  * Class for managing a batched 2D array of arrays (DArrays) on the GPU and
@@ -31,9 +33,7 @@ import jcuda.jcublas.cublasFillMode;
 public class DArray2d extends Array {
 
     private final int lengthOfArrays;
-    
-    
-    
+
     /**
      * An array of Arrays.
      *
@@ -190,7 +190,8 @@ public class DArray2d extends Array {
     }
 
     /**
-     * Fill modes.  Use lower to indicate a lower triangle, upper to indicate an upper triangle, and full for full triangles.
+     * Fill modes. Use lower to indicate a lower triangle, upper to indicate an
+     * upper triangle, and full for full triangles.
      */
     public static enum Fill {
         LOWER(cublasFillMode.CUBLAS_FILL_MODE_LOWER), UPPER(cublasFillMode.CUBLAS_FILL_MODE_UPPER), FULL(cublasFillMode.CUBLAS_FILL_MODE_FULL);
@@ -208,6 +209,47 @@ public class DArray2d extends Array {
     }
 
     /**
+     * Creates an auxiliary workspace for cusolverDnDsyevjBatched using 
+     * cusolverDnDsyevjBatched_bufferSize.
+     *
+     * @param handle The cusolverDn handle.
+     * @param height The size of the matrices (nxn).
+     * @param input The device pointer to the input matrices.
+     * @param ldInput The leading dimension of the matrix A.
+     * @param resultValues The device pointer to the eigenvalue array.
+     * @param batchSize The number of matrices in the batch.
+     * @param fill  How is the matrix stored.
+     * @param params The syevjInfo_t structure for additional parameters.
+     * @return A Pointer array where the first element is the workspace size, 
+     *         and the second element is the device pointer to the workspace.
+     */
+    public static int eigenWorkspaceSize(Handle handle, 
+                                             int height, 
+                                             DArray input, 
+                                             int ldInput, 
+                                             DArray resultValues, 
+                                             int batchSize, 
+                                             JacobiParams params,
+                                             Fill fill) {
+        int[] lwork = new int[1];
+        
+        JCusolverDn.cusolverDnDsyevjBatched_bufferSize(
+            handle.solverHandle(), 
+            cusolverEigMode.CUSOLVER_EIG_MODE_VECTOR, 
+            fill.getFillMode(), 
+            height, 
+            input.pointer, 
+            ldInput, 
+            resultValues.pointer, 
+            lwork, 
+            params.getParams(), 
+            batchSize
+        );
+        
+        return lwork[0];
+    }
+
+    /**
      * https://docs.nvidia.com/cuda/cusolver/index.html?highlight=cusolverDnCheevjBatched#cuSolverDN-lt-t-gt-syevjbatch
      *
      * Computes the eigenvalues and eigenvectors of a batch of symmetric
@@ -220,6 +262,10 @@ public class DArray2d extends Array {
      * This method creates and destroys it's own handle since it uses a
      * different sort of handle then the handle class.
      *
+     * The input matrices are replaced with the eigenvectors.
+     *
+     * Use createEigenWorkspace to calculate the size of the workspace.
+     * 
      * @param height The height and width of the matrices.
      * @param inputMatrices The input matrices, which must be stored in GPU
      * memory consecutively so that each matrix is column-major with leading
@@ -227,56 +273,44 @@ public class DArray2d extends Array {
      * lda*j + lda*n*k]
      * @param ldInput The leading dimension of the input matrices.
      * @param resultValues Array to store the eigenvalues of the matrices.
-     * @param resultVectors Array to store the eigenvectors of the matrices.
-     * @param ldResultVectors The leading dimension of the result vectors. This
-     * is a matrix, each column is an eigan vector.
+     * @param workSpace An auxilery workspace.
      * @param batchCount The number of matrices in the batch.
      * @param cublasFillMode Fill mode for the symmetric matrix (upper or
      * lower).
+     * @param jp a recourse needed by this method.
+     * @param info An integer array. It's length should be batch count. It
+     * stores error messages.
      */
-    public static void computeEigen(int height, DArray inputMatrices, int ldInput,
-            DArray resultValues, DArray resultVectors, int ldResultVectors,
-            int batchCount, Fill cublasFillMode) {
+    public static void computeEigen(Handle handle, int height,
+            DArray inputMatrices, int ldInput, DArray resultValues,
+            DArray workSpace, int batchCount, Fill cublasFillMode,
+            JacobiParams jp, IArray info) {
 
-        cusolverDnHandle solverHandle = new cusolverDnHandle();
-        JCusolverDn.cusolverDnCreate(solverHandle); // Create handle
+        JCusolverDn.cusolverDnDsyevjBatched(
+                handle.solverHandle(), // Handle to the cuSolver context
+                cusolverEigMode.CUSOLVER_EIG_MODE_VECTOR, // Compute both eigenvalues and eigenvectors
+                cublasFillMode.getFillMode(), // Indicates matrix is symmetric
+                height, inputMatrices.pointer, ldInput,
+                resultValues.pointer,
+                
+                workSpace.pointer, workSpace.length,
+                info.pointer, // Array to store status info for each matrix
+                jp.getParams(), // Jacobi algorithm parameters
+                batchCount // Number of matrices in the batch
+        );
 
-        syevjInfo params = new syevjInfo(); // Correct type for Jacobi parameters
-        JCusolverDn.cusolverDnCreateSyevjInfo(params); // Create parameter structure
-        try (IArray info = IArray.empty(batchCount)) {
-
-            JCusolverDn.cusolverDnDsyevjBatched(
-                    solverHandle, // Handle to the cuSolver context
-                    cusolverEigMode.CUSOLVER_EIG_MODE_VECTOR, // Compute both eigenvalues and eigenvectors
-                    cublasFillMode.getFillMode(), // Indicates matrix is symmetric
-                    height, // Size of each matrix
-                    inputMatrices.pointer, // Pointer to input matrices in GPU memory
-                    ldInput, // Leading dimension of input matrices
-                    resultValues.pointer, // Pointer to output array for eigenvalues
-                    resultVectors.pointer, // Pointer to output array for eigenvectors
-                    ldResultVectors, // Leading dimension of result vectors
-                    info.pointer, // Array to store status info for each matrix
-                    params, // Jacobi algorithm parameters
-                    batchCount // Number of matrices in the batch
-            );
-
-            // Step 5: Check for convergence status in info array
-            int[] infoHost = new int[batchCount]; // Host array to fetch status
-
-            Handle hand = new Handle();
-            info.get(hand, infoHost, 0, 0, batchCount);
-            hand.close();
-
-            for (int i = 0; i < batchCount; i++) {
-                if (infoHost[i] != 0) {
-                    System.err.println("Matrix " + i + " failed to converge: info = " + infoHost[i]);
-                }
-            }
-
-            // Step 6: Clean up resources
-            JCusolverDn.cusolverDnDestroySyevjInfo(params);
-            JCusolverDn.cusolverDnDestroy(solverHandle);     // Destroy solver handle
-        }
+//            // Step 5: Check for convergence status in info array
+//            int[] infoHost = new int[batchCount]; // Host array to fetch status
+//
+//            try (Handle hand = new Handle()) {
+//                info.get(hand, infoHost, 0, 0, batchCount);
+//            }
+//
+//            for (int i = 0; i < batchCount; i++) {
+//                if (infoHost[i] != 0) {
+//                    System.err.println("Matrix " + i + " failed to converge: info = " + infoHost[i]);
+//                }
+//            }
     }
 
     /**
@@ -322,24 +356,23 @@ public class DArray2d extends Array {
      */
     public static void multMatMatBatched(Handle handle, boolean transA, boolean transB,
             int aRows, int aColsBRows, int bCols, double timesAB, DArray matA,
-            int lda, long strideA, DArray matB, int ldb, long strideB, double timesResult,
+            int lda, int strideA, DArray matB, int ldb, int strideB, double timesResult,
             DArray result, int ldResult, long strideResult, int batchCount) {
 
         checkNull(handle, matA, matB, result);
-        checkPos(aRows, bCols, ldb, ldResult);        
-        matA.checkAgainstLength(aRows * aColsBRows * batchCount - 1);
-        matB.checkAgainstLength(aColsBRows * bCols * batchCount - 1);
+        checkPos(aRows, bCols, ldb, ldResult);
+        matA.checkAgainstLength(strideA * batchCount - 1);
+        matB.checkAgainstLength(strideB * batchCount - 1);
         result.checkAgainstLength(aRows * bCols * batchCount - 1);
 
-        
         JCublas2.cublasDgemmStridedBatched(
                 handle.get(),
                 DArray.transpose(transA), DArray.transpose(transB),
-                aRows, bCols, aColsBRows,                
-                cpuPointer(timesAB), 
-                matA.pointer, lda, strideA,                
-                matB.pointer, ldb, strideB,                
-                cpuPointer(timesResult), result.pointer, ldResult, strideResult,                
+                aRows, bCols, aColsBRows,
+                cpuPointer(timesAB),
+                matA.pointer, lda, strideA,
+                matB.pointer, ldb, strideB,
+                cpuPointer(timesResult), result.pointer, ldResult, strideResult,
                 batchCount
         );
     }

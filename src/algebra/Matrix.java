@@ -8,6 +8,8 @@ import java.util.Arrays;
 import org.apache.commons.math3.exception.*;
 import org.apache.commons.math3.linear.*;
 import array.DSingleton;
+import array.IArray;
+import resourceManagement.JacobiParams;
 
 /**
  * Represents a matrix stored on the GPU. For more information on jcuda
@@ -1170,18 +1172,18 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
 
     /**
      * A vector containing the dot product of each column and itself.
+     *
      * @return A vector containing the dot product of each column and itself.
      */
     public Vector columnsSquared() {
         Vector colsSquared = new Vector(handle, width);
 
-        DArray2d.multMatMatBatched(handle, true, false,
-                height, 1, 1,
-                1,
-                data, colDist, colDist,
-                data, colDist, colDist,
-                0, colsSquared.dArray(), 1, 1,
-                width);
+        colsSquared.horizontal().multiplyBatch(true, false, 1, 
+                getColumnMatrix(0), colDist, 
+                getColumnMatrix(0), colDist, 
+                0, 1, 
+                width
+        );
         return colsSquared;
     }
 
@@ -1300,21 +1302,20 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     public Matrix newDimensions(int newHieght, int newWidth, int newColDist) {
         return new Matrix(handle, data, newHieght, newWidth, newColDist);
     }
-    
-    
+
     /**
      * Creates a matrix from the underlying data in this matrix with a new
      * height, width, and distance between columns. Note that if the distance
      * between columns in the new matrix is less that in this matrix, the matrix
      * will contain data that this one does not.
      *
-     * @param newHieght The height of the new matrix.  The width*colDist should
+     * @param newHieght The height of the new matrix. The width*colDist should
      * be divisible by this number.
      * @return A shallow copy of this matrix that has a different shape.
      *
      */
     public Matrix newDimensions(int newHieght) {
-        return newDimensions(newHieght, size()/newHieght, newHieght);
+        return newDimensions(newHieght, size() / newHieght, newHieght);
     }
 
     /**
@@ -1328,4 +1329,58 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
         return colDist;
     }
 
+    /**
+     * For this method to work, this matrix must have width = batchSize *
+     * height. Additionally, each submatrix must be symmetric.
+     *
+     * This method leverages the cusolverDnDsyevjBatched function, which
+     * computes the eigenvalues and eigenvectors of symmetric matrices using the
+     * Jacobi method.
+     *
+     * This method creates and destroys it's own handle since it uses a
+     * different sort of handle then the handle class.  It synchronizes this
+     * handle.
+     * 
+     * The elements of this matrix are replaced with the eigenvectors.
+     *
+     * @param workSpace A vector to store the resulting eigenvalues.
+     * @param resultValues A matrix to store the resulting eigenvectors.
+     * @param jp
+     * @param info
+     */
+    public void eigenBatch(Vector resultValues, DArray workSpace, JacobiParams jp, IArray info) {
+        
+        DArray2d.computeEigen(handle, height, dArray(), 
+                colDist, resultValues.dArray(), 
+                workSpace, width/height, DArray2d.Fill.FULL, jp, info);
+    }
+
+    /**
+     * Multiplies batches of matrices and adds the results to submatrices of
+     * this.
+     *
+     * @param transA Transpose the set of A matrices.
+     * @param transB Transpose the set of B matrices.
+     * @param timesAB Multiply their product.
+     * @param a The first matrix in the first set.
+     * @param strideA The step size for the first set of matrices.
+     * @param b The first matrix in the second set.
+     * @param strideB The step size for the second set of matrices.
+     * @param timesThis multiply this before adding to the AB product and
+     * setting this with the result.
+     * @param strideThis The step size for the result.
+     * @param batchCount The number of multiplications to take place.
+     */
+    public void multiplyBatch(boolean transA, boolean transB, double timesAB, Matrix a, int strideA, Matrix b, int strideB, double timesThis, int strideThis, int batchCount) {
+                
+        DArray2d.multMatMatBatched(
+                handle, transB, transB,
+                a.height, a.width, b.width,
+                timesAB,
+                a.data, a.colDist, strideA,
+                b.data, b.colDist, strideB,
+                timesThis, data, colDist, strideThis,
+                batchCount
+        );
+    }
 }

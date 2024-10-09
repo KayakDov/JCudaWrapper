@@ -6,6 +6,7 @@ import java.util.Arrays;
 import jcuda.Pointer;
 import jcuda.Sizeof;
 import jcuda.driver.CUdeviceptr;
+import jcuda.jcublas.cublasOperation;
 import jcuda.runtime.JCuda;
 import jcuda.runtime.cudaMemcpyKind;
 import resourceManagement.Handle;
@@ -350,6 +351,18 @@ abstract class Array implements AutoCloseable {
             throw new NullPointerException();
     }
     
+        
+    private final static int transpose = cublasOperation.CUBLAS_OP_T;
+    private final static int dontTrans = cublasOperation.CUBLAS_OP_N;
+
+    /**
+     * A mapping from boolean transpose to the corresponding cuda integer.
+     * @param t True for transpose and false to not transpose.
+     * @return An integer representing yes or no on a transpose operation.
+     */
+    static int transpose(boolean t){
+        return t?transpose:dontTrans;
+    }
     
 }
 

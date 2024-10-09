@@ -1164,16 +1164,5 @@ public class DArray extends Array {
 
     }
 
-    
-    private final static int transpose = cublasOperation.CUBLAS_OP_T;
-    private final static int dontTrans = cublasOperation.CUBLAS_OP_N;
 
-    /**
-     * A mapping from boolean transpose to the corresponding cuda integer.
-     * @param t True for transpose and false to not transpose.
-     * @return An integer representing yes or no on a transpose operation.
-     */
-    static int transpose(boolean t){
-        return t?transpose:dontTrans;
-    }
 }

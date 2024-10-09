@@ -3,6 +3,8 @@ package resourceManagement;
 import jcuda.CudaException;
 import jcuda.driver.JCudaDriver;
 import jcuda.jcublas.JCublas;
+import jcuda.jcusolver.JCusolver;
+import jcuda.jcusolver.JCusolverDn;
 import jcuda.runtime.JCuda;
 
 /**
@@ -21,6 +23,7 @@ public class GPU {
             JCuda.setExceptionsEnabled(true);
             JCublas.setExceptionsEnabled(true);
             JCudaDriver.setExceptionsEnabled(true);
+            JCusolver.setExceptionsEnabled(true);
 
         }
     }
