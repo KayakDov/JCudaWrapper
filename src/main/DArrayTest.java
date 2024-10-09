@@ -7,10 +7,9 @@ import java.awt.geom.Point2D;
 import java.util.Arrays;
 import array.DArray;
 import array.DArray2d;
-import array.IArray;
 import resourceManagement.EigenSupport;
+
 import resourceManagement.Handle;
-import resourceManagement.JacobiParams;
 
 /**
  * Tests the DArray class.
@@ -319,7 +318,7 @@ public class DArrayTest {
 
         DArray expected = Matrix.identity(aRows, handle).asVector().append(Matrix.identity(aRows, handle).asVector()).dArray();
 
-        DArray2d.multMatMatBatched(
+        DArray2d.multMatMatStridedBatched(
                 handle, false, false,
                 aRows, aColsBRows, bCols,
                 timesAB,
@@ -355,7 +354,7 @@ public class DArrayTest {
 
         System.out.println(m.toString());
         System.out.println(resultValues.toString());
-        
+
         EigenSupport es = new EigenSupport(handle, m, resultValues, 2);
         es.compute(m, resultValues);
 

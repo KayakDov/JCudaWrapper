@@ -1188,7 +1188,7 @@ public class Vector extends RealVector implements AutoCloseable {
      * @param result Where the result is to be stored.
      */
     public static void batchVecVecMult(Vector a, int aStride, Vector b, int bStride, Vector result) {
-        DArray2d.multMatMatBatched(a.getHandle(), false, true,
+        DArray2d.multMatMatStridedBatched(a.getHandle(), false, true,
                 1, a.getDimension(), 1,
                 1,
                 a.data, a.inc, aStride,

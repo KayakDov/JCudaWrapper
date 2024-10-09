@@ -6,6 +6,7 @@ import java.util.function.Consumer;
 import org.apache.commons.math3.exception.DimensionMismatchException;
 import resourceManagement.Handle;
 import array.DArray2d;
+import array.IArray;
 
 /**
  * A class representing a batch of matrices stored in GPU memory, allowing
@@ -271,7 +272,50 @@ public class MatrixBatchPointers implements AutoCloseable {
         copy.transposeForOperations = transposeForOperations;
         return copy;
     }
+    
+    /**
+     * LU factorization of all the square sub matrices.  Each matrix will be replaced
+     * by it's LU factorization.  The diagonal of the L is all ones and it is omitted.
+     * For example {6,2,3,4} has L = {1,6,0,1} and U = {2,0,3,4}.
+     * @param handle
+     * @param info 
+     */
+    public void LU(Handle handle, IArray info){
+        arrays.luFactorizationBatched(handle, height, colDist, height, info);
+    }
 
+    
+    
+    /**
+     * Performs batched eigenvector computation for symmetric matrices.
+     *
+     * This function computes the Cholesky factorization of a sequence of
+     * Hermitian positive-definite matrices.
+     *
+     *
+     * If input parameter fill is LOWER, only lower triangular part of A is
+     * processed, and replaced by lower triangular Cholesky factor L.
+     *
+     *
+     * If input parameter uplo is UPPER, only upper triangular part of A is
+     * processed, and replaced by upper triangular Cholesky factor U. * Remark:
+     * the other part of A is used as a workspace. For example, if uplo is
+     * CUBLAS_FILL_MODE_UPPER, upper triangle of A contains Cholesky factor U
+     * and lower triangle of A is destroyed after potrfBatched.
+     *
+     * @param handle Handle to cuSolver context.
+     * @param fill The part of the dense matrix that is looked at and replaced.
+     * @param info infoArray is an integer array of size batchsize. If
+     * potrfBatched returns CUSOLVER_STATUS_INVALID_VALUE, infoArray[0] = -i
+     * (less than zero), meaning that the i-th parameter is wrong (not counting
+     * handle). If potrfBatched returns CUSOLVER_STATUS_SUCCESS but infoArray[i]
+     * = k is positive, then i-th matrix is not positive definite and the
+     * Cholesky factorization failed at row k.
+     */
+    public void choleskyFactorization(Handle handle, IArray info, DArray2d.Fill fill) {
+        arrays.choleskyFactorization(handle, width, colDist, info, fill);
+    }
+        
     /**
      * closes the underlying array of pointers to data. This should only be
      * called if the resource is not being used by any other objects. This

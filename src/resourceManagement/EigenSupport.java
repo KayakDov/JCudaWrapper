@@ -1,3 +1,7 @@
+//This code doesn't work:
+//     syevjInfo params = new syevjInfo();
+//     JCusolverDn.cusolverDnCreateSyevjInfo(params);
+
 package resourceManagement;
 
 import algebra.Matrix;
@@ -8,7 +12,7 @@ import array.IArray;
 
 /**
  * The EigenSupport class provides support for computing eigenvalues and 
- * eigenvectors for a batch of matrices using the cuSolver library. 
+ * eigenvectors for a batch of symmetric matrices using the cuSolver library. 
  * It manages the resources necessary for these computations, including 
  * the workspace and information storage.
  * 
@@ -22,7 +26,6 @@ public class EigenSupport implements AutoCloseable {
     private JacobiParams jp;
     private DArray workspace;
     private IArray info;
-    private Handle handle;
 
     /**
      * Constructs an EigenSupport instance, initializing the necessary 
@@ -38,10 +41,7 @@ public class EigenSupport implements AutoCloseable {
         handle.synch();
         System.out.println("resourceManagement.EigenSupport.<init>() Beginning eigan support");
         
-        this.handle = handle;
         this.jp = new JacobiParams();
-        
-        System.out.println("resourceManagement.EigenSupport.<init>() checking workspace size");
         
         int workspaceSize = DArray2d.eigenWorkspaceSize(
                 handle, 
@@ -53,7 +53,7 @@ public class EigenSupport implements AutoCloseable {
                 jp, 
                 DArray2d.Fill.FULL);
         
-        System.out.println("resourceManagement.EigenSupport.<init>() workspaceSize = " + workspaceSize);
+        
         
         workspace = DArray.empty(workspaceSize);
         
@@ -68,7 +68,11 @@ public class EigenSupport implements AutoCloseable {
      * @param resultValues The vector where the eigenvalues will be stored.
      */
     public void compute(Matrix a, Vector resultValues) {
-        a.eigenBatch(resultValues, workspace, jp, info);
+        System.out.println("resourceManagement.EigenSupport.compute()  1"); 
+       
+        DArray2d.computeEigen(a.getHandle(), a.getHeight(), a.dArray(), a.colDist, resultValues.dArray(), workspace, a.getWidth()/a.getHeight(), DArray2d.Fill.UPPER, jp, info);
+        
+        System.out.println("resourceManagement.EigenSupport.compute()  2"); 
     }
 
     /**
@@ -80,7 +84,6 @@ public class EigenSupport implements AutoCloseable {
         jp.close();
         workspace.close();
         info.close();
-        handle.close();
     }
 
 }

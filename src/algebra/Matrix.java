@@ -9,7 +9,6 @@ import org.apache.commons.math3.exception.*;
 import org.apache.commons.math3.linear.*;
 import array.DSingleton;
 import array.IArray;
-import resourceManagement.JacobiParams;
 
 /**
  * Represents a matrix stored on the GPU. For more information on jcuda
@@ -1329,31 +1328,6 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
         return colDist;
     }
 
-    /**
-     * For this method to work, this matrix must have width = batchSize *
-     * height. Additionally, each submatrix must be symmetric.
-     *
-     * This method leverages the cusolverDnDsyevjBatched function, which
-     * computes the eigenvalues and eigenvectors of symmetric matrices using the
-     * Jacobi method.
-     *
-     * This method creates and destroys it's own handle since it uses a
-     * different sort of handle then the handle class.  It synchronizes this
-     * handle.
-     * 
-     * The elements of this matrix are replaced with the eigenvectors.
-     *
-     * @param workSpace A vector to store the resulting eigenvalues.
-     * @param resultValues A matrix to store the resulting eigenvectors.
-     * @param jp
-     * @param info
-     */
-    public void eigenBatch(Vector resultValues, DArray workSpace, JacobiParams jp, IArray info) {
-        
-        DArray2d.computeEigen(handle, height, dArray(), 
-                colDist, resultValues.dArray(), 
-                workSpace, width/height, DArray2d.Fill.FULL, jp, info);
-    }
 
     /**
      * Multiplies batches of matrices and adds the results to submatrices of
@@ -1373,7 +1347,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
      */
     public void multiplyBatch(boolean transA, boolean transB, double timesAB, Matrix a, int strideA, Matrix b, int strideB, double timesThis, int strideThis, int batchCount) {
                 
-        DArray2d.multMatMatBatched(
+        DArray2d.multMatMatStridedBatched(
                 handle, transB, transB,
                 a.height, a.width, b.width,
                 timesAB,
@@ -1383,4 +1357,5 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
                 batchCount
         );
     }
+
 }

@@ -1,3 +1,8 @@
+
+// This code doesn't work:
+//     syevjInfo params = new syevjInfo();
+//     JCusolverDn.cusolverDnCreateSyevjInfo(params);
+ 
 package resourceManagement;
 
 import java.lang.ref.Cleaner;
@@ -38,7 +43,7 @@ public class JacobiParams implements AutoCloseable {
      * Cleanable resource for the Jacobi parameters, used to ensure that the
      * syevjInfo structure is destroyed when no longer needed.
      */
-    private final Cleaner.Cleanable cleanableParam;
+//    private final Cleaner.Cleanable cleanableParam;
 
     /**
      * Constructs a new {@code JacobiParams} instance, creating the syevjInfo
@@ -46,28 +51,26 @@ public class JacobiParams implements AutoCloseable {
      * is registered for automatic cleanup.
      */
     public JacobiParams() {
-
-        System.out.println("resourceManagement.JacobiParams.<init>() 1");
+    
         params = new syevjInfo(); // Correct type for Jacobi parameters
-        System.out.println("resourceManagement.JacobiParams.<init>() 2");
-        JCusolverDn.cusolverDnCreateSyevjInfo(params); // Create parameter structure
 
-        System.out.println("resourceManagement.JacobiParams.<init>() 3");
+//        JCusolverDn.cusolverDnCreateSyevjInfo(params); // Create parameter structure
+
 
         // Register the syevjInfo structure for cleanup
-        cleanableParam = ResourceDealocator.register(
-                this,
-                params -> JCusolverDn.cusolverDnDestroySyevjInfo(params),
-                params
-        );
+//        cleanableParam = ResourceDealocator.register(
+//                this,
+//                params -> JCusolverDn.cusolverDnDestroySyevjInfo(params),
+//                params
+//        );
     }
 
     public static void main(String[] args) {
         syevjInfo params = new syevjInfo();
-        JCusolverDn.cusolverDnCreateSyevjInfo(params);
+//        JCusolverDn.cusolverDnCreateSyevjInfo(params);
         
         
-        JCusolverDn.cusolverDnDestroySyevjInfo(params);
+//        JCusolverDn.cusolverDnDestroySyevjInfo(params);
     }
 
     /**
@@ -84,11 +87,10 @@ public class JacobiParams implements AutoCloseable {
      * Closes the Jacobi parameters, ensuring that the resources are cleaned up.
      * This method is automatically called when the object is used in a
      * try-with-resources statement.
-     *
-     * @throws Exception if the cleanup process encounters an error.
+
      */
     @Override
     public void close() {
-        cleanableParam.clean(); // Clean up the Jacobi parameters
+//        cleanableParam.clean(); // Clean up the Jacobi parameters
     }
 }
