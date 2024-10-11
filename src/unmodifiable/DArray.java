@@ -116,11 +116,6 @@ public class DArray extends array.DArray {
         throw new UnmodifiableException();
     }
 
-    @Override
-    public array.DArray atan2(array.DArray from) {
-        throw new UnmodifiableException();
-    }
-
     /**
      * This method has been disabled. Be sure to call close from the creator
      * instance.

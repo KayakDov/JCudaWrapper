@@ -97,7 +97,8 @@ abstract class Array implements AutoCloseable {
      * @throws ArrayIndexOutOfBoundsException if the index is out of bounds.
      */
     protected CUdeviceptr pointer(int index) {
-        checkPos(index);checkAgainstLength(index);
+        checkPos(index);
+        checkAgainstLength(index);
         
         return pointer.withByteOffset(index * type.size);
     }

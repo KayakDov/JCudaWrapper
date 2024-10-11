@@ -256,8 +256,8 @@ public class DArray2d extends Array {
 
         checkNull(handle, matA, matB, result);
         checkPos(aRows, bCols, ldb, ldResult);
-        matA.checkAgainstLength(strideA * batchCount - 1);
-        matB.checkAgainstLength(strideB * batchCount - 1);
+        matA.checkAgainstLength(strideA * (batchCount - 1));
+        matB.checkAgainstLength(strideB * (batchCount - 1));
         result.checkAgainstLength(aRows * bCols * batchCount - 1);
 
         JCublas2.cublasDgemmStridedBatched(

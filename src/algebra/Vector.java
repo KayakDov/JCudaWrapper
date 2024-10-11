@@ -25,7 +25,7 @@ public class Vector extends RealVector implements AutoCloseable {
 
     private final DArray data;  // Underlying array for GPU-based operations
     private final Handle handle; // JCublas handle for GPU operations
-    final int inc;
+    public final int inc;
 
     /**
      * Constructs a new {@code Vector} from an existing data pointer on the GPU.
@@ -232,11 +232,86 @@ public class Vector extends RealVector implements AutoCloseable {
      * @throws DimensionMismatchException if the vectors have different lengths.
      */
     public Vector mapEbeMultiplyToSelf(Vector a, Vector b) {
+
+        return mapAddEbeMultiplyToSelf(a, b, 0);
+
+    }
+
+    /**
+     * Computes the element-wise product of this vector and another vector, and
+     * adds it to this vector.
+     *
+     * @param a The first vector.
+     * @param b The second vector.
+     * @param timesThis Multiply this matrix before adding the product of a and
+     * b to it.
+     * @see Vector#ebeMultiply(org.apache.commons.math3.linear.RealVector)
+     * @return A new vector containing the element-wise product of this vector
+     * and {@code v}.
+     * @throws DimensionMismatchException if the vectors have different lengths.
+     */
+    public Vector mapAddEbeMultiplyToSelf(Vector a, Vector b, double timesThis) {
+        return addEbeMultiplyToSelf(1, a, b, timesThis);
+    }
+
+    /**
+     * Computes the element-wise product of this vector and another vector, and
+     * adds it to this vector.
+     *
+     * @param a The first vector.
+     * @param b The second vector.
+     * @param timesAB A scalar to multiply by a and b.
+     * @param timesThis multiply this vector before adding the product of a and
+     * b.
+     * @see Vector#ebeMultiply(org.apache.commons.math3.linear.RealVector)
+     * @return A new vector containing the element-wise product of this vector
+     * and {@code v}.
+     * @throws DimensionMismatchException if the vectors have different lengths.
+     */
+    public Vector addEbeMultiplyToSelf(double timesAB, Vector a, Vector b, double timesThis) {
         checkVectorLength(a, b);
 
-        data.multSymBandMatVec(handle, true, getDimension(), 0, 1, a.data, a.inc, b.data, b.inc, 0, 1);
+        data.multSymBandMatVec(handle, true, 
+                getDimension(), 0, 
+                timesAB, a.data, a.inc, 
+                b.data, b.inc, 
+                timesThis, inc
+        );
 
         return this;
+    }
+
+    /**
+     * Computes the element-wise product of this vector and another vector, and
+     * adds it to this vector.
+     *
+     * @param workSpace A space to work in. It should be at least the size of
+     * this vector.
+     * @param a The first vector.
+     * @param b The second vector.
+     * @param timesAB A scalar to multiply by a and b.
+     * @param timesThis multiply this vector before adding the product of a and
+     * b.
+     * @see Vector#ebeMultiply(org.apache.commons.math3.linear.RealVector)
+     * @return A new vector containing the element-wise product of this vector
+     * and {@code v}.
+     * @throws DimensionMismatchException if the vectors have different lengths.
+     */
+    public Vector mapAddEbeMultiplyToSelf(Vector workSpace, double timesAB, double timesThis, Vector... a) {
+
+        mapMultiplyToSelf(timesThis);
+
+        if (a.length == 0) return this;
+        if (a.length == 1) return addEbeMultiplyToSelf(timesAB, this, a[0], 1);
+        if (a.length == 2) return addEbeMultiplyToSelf(timesAB, a[0], a[1], 1);
+
+        workSpace.addEbeMultiplyToSelf(timesAB, a[0], a[1], 0);
+
+        for (int i = 2; i < a.length; i++)
+            workSpace.mapAddEbeMultiplyToSelf(workSpace, a[i], 0);
+
+        return addToMe(1, workSpace);
+
     }
 
     /**
@@ -270,12 +345,28 @@ public class Vector extends RealVector implements AutoCloseable {
      * @return A new vector with every element raised to -1.
      */
     public Vector ebeInvert() {
-        Vector inverse = new Vector(handle, getDimension()).fill(1);
 
-        inverse.data.solveTriangularBandedSystem(handle, true, false, false,
+        return mapEBEInverse(new Vector(handle, getDimension()));
+    }
+
+    /**
+     * Maps the inverse of each element in this vectot to the target. DO NOT
+     * pass this into mapTo. DO NOT use this method to map to itself.
+     *
+     * @param mapTo Where the inverse of the elements in this vector are to be
+     * put. This may not be this vector or have any overlapping data location
+     * with this vector.
+     * @return The vector mapTo with its elements overwritten to be the inverse
+     * of the elements in this vector.
+     */
+    public Vector mapEBEInverse(Vector mapTo) {
+        mapTo.fill(1);
+
+        mapTo.data.solveTriangularBandedSystem(
+                handle, true, false, false,
                 getDimension(), 0, data, 1, 1);
 
-        return inverse;
+        return mapTo;
     }
 
     /**
@@ -377,16 +468,21 @@ public class Vector extends RealVector implements AutoCloseable {
      * versa.
      *
      * @param begin Where the vector begins.
-     * @param length The length of the new vector.The number of elements in the vector.
-     * @param increment The stride step of the new vector.  For example, if this
-     * value is set to 2, then the new vector will contain every other element of
-     * this vector.
+     * @param length The length of the new vector.The number of elements in the
+     * vector.
+     * @param increment The stride step of the new vector. For example, if this
+     * value is set to 2, then the new vector will contain every other element
+     * of this vector.
      * @return A sub vector of this vector.
      * @throws NotPositiveException
      * @throws OutOfRangeException
      */
     public Vector getSubVector(int begin, int length, int increment) throws NotPositiveException, OutOfRangeException {
-        return new Vector(handle, data.subArray(begin * inc, inc*increment*length), inc*increment);
+        return new Vector(
+                handle, 
+                data.subArray(begin * inc, inc * increment * length), 
+                inc * increment
+        );
     }
 
     /**
@@ -459,7 +555,9 @@ public class Vector extends RealVector implements AutoCloseable {
     }
 
     /**
-     * Sets a portion of this vector to the contents of the given Vector.*
+     * Sets a portion of this vector to the contents of the given Vector.
+     *
+     *
      * @param v The vector to copy from.
      */
     public void set(Vector v) {
@@ -1152,8 +1250,7 @@ public class Vector extends RealVector implements AutoCloseable {
     public Matrix asMatrix(int height, int width, int colDist) {
         return new Matrix(handle, data, height, width, colDist);
     }
-    
-    
+
     /**
      * A matrix representing the data underlying this Vector. Note, depending on
      * inc and colDist, the new matrix may have more or fewere elements than
@@ -1165,7 +1262,7 @@ public class Vector extends RealVector implements AutoCloseable {
      * vector.
      */
     public Matrix asMatrix(int height) {
-        return new Matrix(handle, data, height, data.length/height, height);
+        return new Matrix(handle, data, height, data.length / height, height);
     }
 
     /**
@@ -1178,23 +1275,37 @@ public class Vector extends RealVector implements AutoCloseable {
     }
 
     /**
-     * Batch vector vector dot product. The result vector is set as the dot
-     * product of a and b.
+     * Batch vector vector dot product. This vector is set as the dot product of
+     * a and b.
+     *
+     * @param timesAB Multiply this by the product of a and b.
+     * @param a The first vector. A sub vector of a matrix or greater vector.
+     * @param aStride The increment to step to get to the next vector.
+     * @param b The second vector. A sub vector of a matrix or greater vector.
+     * @param bStride The increment to step to get to the next vector.
+     * @param timesThis multiply this before adding to it.
+     */
+    public void addBatchVecVecMult(double timesAB, Vector a, int aStride, Vector b, int bStride, double timesThis) {
+        DArray2d.multMatMatStridedBatched(a.getHandle(), false, true,
+                1, a.getDimension(), 1,
+                timesAB,
+                a.data, a.inc, aStride,
+                b.data, b.inc, bStride,
+                timesThis, data, inc, inc,
+                getDimension());
+    }
+
+    /**
+     * Batch vector vector dot product. This vector is set as the dot product of
+     * a and b.
      *
      * @param a The first vector. A sub vector of a matrix or greater vector.
      * @param aStride The increment to step to get to the next vector.
      * @param b The second vector. A sub vector of a matrix or greater vector.
      * @param bStride The increment to step to get to the next vector.
-     * @param result Where the result is to be stored.
      */
-    public static void batchVecVecMult(Vector a, int aStride, Vector b, int bStride, Vector result) {
-        DArray2d.multMatMatStridedBatched(a.getHandle(), false, true,
-                1, a.getDimension(), 1,
-                1,
-                a.data, a.inc, aStride,
-                b.data, b.inc, bStride,
-                0, result.data, result.inc, 1,
-                result.getDimension());
+    public void setBatchVecVecMult(Vector a, int aStride, Vector b, int bStride) {
+        addBatchVecVecMult(1, a, aStride, b, bStride, 0);
     }
 
 }

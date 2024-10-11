@@ -415,44 +415,6 @@ public class DArray extends Array {
         JCublas2.cublasDnrm2(handle.get(), length, pointer, inc, Pointer.to(result).withByteOffset(toIndex * Sizeof.DOUBLE));
     }
 
-    public static void main(String[] args) {
-        Handle handle = new Handle();
-        
-        DArray array = new DArray(handle, 3, 4);
-
-        DArray resultGPU = empty(1);
-        double[] resultCPU = new double[1];
-        
-        int status = JCublas2.cublasDnrm2(
-                handle.get(),
-                array.length, 
-                array.pointer,
-                1, 
-                resultGPU.pointer
-        );
-
-        
-        if (status != cublasStatus.CUBLAS_STATUS_SUCCESS) {
-            throw new RuntimeException("cublasDnrm2 failed with error code: " + status);
-        }
-
-        
-        resultGPU.get(handle, resultCPU, 0, 0, 1);
-        
-        System.out.println("Result from GPU: " + resultCPU[0]);
-
-        
-        JCublas2.cublasDnrm2(
-                handle.get(),
-                array.length,
-                array.pointer,
-                1,
-                Pointer.to(resultCPU) 
-        );
-        
-        System.out.println("Result from CPU: " + resultCPU[0]);
-    }
-
     /**
      * Finds the index of the element with the minimum absolute value in the
      * vector X:
@@ -895,12 +857,20 @@ public class DArray extends Array {
             return subArray(0, width * height).fill(handle, fill, 1);
         }
 
-        try (DArray filler = DArray.empty(width * height).fill(handle, fill, 1)) {
-
-            addAndSet(handle, false, false, height, width, 1, filler, height, 0, this, lda, lda);
+        try (DArray filler = new DArray(handle, fill)) {
+            int size = height*width;
+            Kernel kern = new Kernel("fillMatrix.ptx", "fillMat", size);
+            kern.map(filler, lda, this, height);
         }
 
         return this;
+    }
+    
+    public static void main(String[] args) {
+        Handle hand = new Handle();
+        DArray d = new DArray(hand, 1,2,3,4,5,6);
+        d.fillMatrix(hand, 2, 2, 3, 7);
+        System.out.println(d);
     }
 
     /**
@@ -997,9 +967,9 @@ public class DArray extends Array {
         JCublas2.cublasDgemm(
                 handle.get(), // cublas handle
                 transpose(transposeA), transpose(transposeB),
-                aRows, bCols,  aCols, 
-                cpuPointer(timesAB), a.pointer, lda, 
-                b.pointer, ldb, cpuPointer(timesCurrent), 
+                aRows, bCols, aCols,
+                cpuPointer(timesAB), a.pointer, lda,
+                b.pointer, ldb, cpuPointer(timesCurrent),
                 pointer, ldc
         );
     }
@@ -1026,7 +996,7 @@ public class DArray extends Array {
         checkNull(handle, x);
         checkLowerBound(1, inc);
 
-        JCublas2.cublasDaxpy(handle.get(), length, Pointer.to(new double[]{timesX}), x.pointer, incX, pointer, inc);
+        JCublas2.cublasDaxpy(handle.get(), length, cpuPointer(timesX), x.pointer, incX, pointer, inc);
         return this;
     }
 
@@ -1137,32 +1107,9 @@ public class DArray extends Array {
                 transpose(transpose),
                 resultRowsCols, cols,
                 cpuPointer(alpha), a.pointer, lda,
-                cpuPointer(alpha), 
+                cpuPointer(alpha),
                 pointer, ldThis
         );
     }
-
-    /**
-     * Computes the angles (in radians) of 2D vectors stored in the current
-     * DArray using the atan2 function. The vectors are assumed to be stored in
-     * an interleaved format, where the x-values and y-values alternate.
-     *
-     * This method uses a CUDA kernel.
-     *
-     * The x-value of each vector is at index 2*i and the y-value is at index
-     * 2*i + 1.
-     *
-     * @param from An array of consecutive x, y values.
-     * @return A DArray containing the computed angles (in radians) for each
-     * vector. The size of the returned DArray is half the length of the input
-     * vectors since each angle corresponds to one pair of (x, y) values.
-     */
-    public DArray atan2(DArray from) {
-
-        Kernel kernel = new Kernel("atan2.ptx", "atan2xy", length);
-        return kernel.map(from, this);
-
-    }
-
 
 }
