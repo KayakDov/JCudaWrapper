@@ -1,21 +1,24 @@
 package array;
 
 import algebra.Vector;
-import array.IArray;
 import java.io.File;
+import java.lang.ref.Cleaner;
+import java.util.HashMap;
 import jcuda.Pointer;
 import jcuda.driver.CUfunction;
 import jcuda.driver.CUmodule;
 import jcuda.driver.CUresult;
-import jcuda.driver.CUstream;
 import jcuda.driver.JCudaDriver;
+import resourceManagement.Handle;
+import resourceManagement.ResourceDealocator;
 
 /**
  * The {@code Kernel} class is a utility for managing and executing CUDA kernels
  * using JCuda. It handles loading CUDA modules, setting up functions, and
  * executing them with specified parameters.
- * 
- * Helper methods include https://docs.nvidia.com/cuda/cuda-math-api/group__CUDA__MATH__DOUBLE.html
+ *
+ * Helper methods include
+ * https://docs.nvidia.com/cuda/cuda-math-api/group__CUDA__MATH__DOUBLE.html
  * <p>
  * This class is designed to simplify the process of launching CUDA kernels with
  * a given input and output {@code DArray}.
@@ -33,24 +36,21 @@ import jcuda.driver.JCudaDriver;
  *
  * @author E. Dov Neimand
  */
-public class Kernel {
+public class Kernel implements AutoCloseable {
 
+    private static final GPUMath math = new GPUMath();
     /**
      * The CUDA function handle for the loaded kernel.
      */
     private final CUfunction function;
 
     /**
-     * The number of blocks to be launched in the grid.
-     */
-    private final int gridSize;
-
-    /**
      * The number of threads per block to be used in kernel execution.
      */
     private final static int BLOCK_SIZE = 256;
 
-    private int batchSize;
+    private CUmodule module;
+    private final Cleaner.Cleanable cleanable;
 
     /**
      * Constructs a {@code Kernel} object that loads a CUDA module from a given
@@ -63,10 +63,10 @@ public class Kernel {
      * "atan2xy").
      * @param n The total number of operations to determine the grid size.
      */
-    public Kernel(String fileName, String functionName, int n) {
-        CUmodule module = new CUmodule();
+    private Kernel(String fileName, String functionName) {
+        this.module = new CUmodule();
 
-        File ptxFile = new File("src" + File.separator + "kernels" + File.separator+ "ptx" + File.separator + fileName);
+        File ptxFile = new File("src" + File.separator + "kernels" + File.separator + "ptx" + File.separator + fileName);
         if (!ptxFile.exists())
             throw new RuntimeException("Kernel file not found: " + ptxFile.getAbsolutePath());
 
@@ -79,9 +79,21 @@ public class Kernel {
             throw new RuntimeException("Failed to load kernel function");
         }
 
-        gridSize = (int) Math.ceil((double) n / BLOCK_SIZE);
+        cleanable = ResourceDealocator.register(this, module -> JCudaDriver.cuModuleUnload(module), module);
+    }
 
-        batchSize = n;
+    /**
+     * Gets a kernel and sets the batchsize to n. If this same kernel is being
+     * used elsewhere with a different batchsize, it's changed there too.
+     *
+     * @param name not including the .ptx which the file must have. Also not
+     * including any of the path so long as the file is in the kernel/ptx
+     * folder.     
+     
+     * @return The Kernel.
+     */
+    public static Kernel get(String name) {
+        return math.put(name);
     }
 
     /**
@@ -89,29 +101,34 @@ public class Kernel {
      * a specified stream. Note, a stream is generated for this method, so be
      * sure that the data is synchronized before and after.
      *
+     * @param <T> The type of array.
+     * @param handle
      * @param input The {@code DArray} representing the input data to be
      * processed by the kernel.
      * @param incInput The increment for the input array.
      * @param output The {@code DArray} representing the output data where
      * results will be stored.
      * @param incOutput The increment for the output array.
+     * @param n The number of elements to be mapped.
      * @return The {@code DArray} containing the processed results.
      */
-    public DArray map(DArray input, int incInput, DArray output, int incOutput) {
+    public <T extends Array> T map(Handle handle, T input, int incInput, T output, int incOutput, int n) {
+
+        int gridSize = (int) Math.ceil((double) n / BLOCK_SIZE);
 
         Pointer kernelParameters = Pointer.to(
                 Pointer.to(input.pointer),
                 IArray.cpuPointer(incInput),
                 Pointer.to(output.pointer),
                 IArray.cpuPointer(incOutput),
-                IArray.cpuPointer(batchSize)
+                IArray.cpuPointer(n)
         );
 
         int result = JCudaDriver.cuLaunchKernel(
                 function,
                 gridSize, 1, 1, // Grid size (number of blocks)
                 BLOCK_SIZE, 1, 1, // Block size (number of threads per block)
-                0, null, // Shared memory size and the specified stream
+                0, handle.cuStream(), // Shared memory size and the specified stream
                 kernelParameters, null // Kernel parameters
         );
         checkResult(result);
@@ -140,14 +157,16 @@ public class Kernel {
      * a specified stream. Note, a stream is generated for this method, so be
      * sure that the data is synchronized before and after.
      *
+     * @param handle
      * @param input The {@code DArray} representing the input data to be
      * processed by the kernel.
      * @param output The {@code DArray} representing the output data where
      * results will be stored.
+     * @param n The number of elements to be mapped.
      * @return The {@code DArray} containing the processed results.
      */
-    public DArray map(DArray input, DArray output) {
-        return map(input, 1, output, 1);
+    public DArray map(Handle handle, DArray input, DArray output, int n) {
+        return map(handle, input, 1, output, 1, n);
     }
 
     /**
@@ -161,8 +180,8 @@ public class Kernel {
      * results will be stored.
      * @return The {@code DArray} containing the processed results.
      */
-    public DArray map(Vector input, Vector output) {
-        return map(input.dArray(), input.inc, output.dArray(), output.inc);
+    public DArray map(Handle handle, Vector input, Vector output) {
+        return map(handle, input.dArray(), input.inc, output.dArray(), output.inc, Math.min(input.getDimension(), output.getDimension()));
     }
 
     /**
@@ -171,11 +190,10 @@ public class Kernel {
      *
      * @param input The {@code DArray} representing the input data to be
      * processed by the kernel.
-     * @param numOperation The number of operations or elements to process.
      * @return The {@code DArray} containing the processed results.
      */
-    public DArray mapping(DArray input, int numOperation) {
-        return map(input, DArray.empty(numOperation));
+    public DArray mapping(Handle handle, DArray input) {
+        return map(handle, input, DArray.empty(input.length), input.length);
     }
 
     /**
@@ -186,8 +204,8 @@ public class Kernel {
      * processed by the kernel.
      * @return The {@code DArray} containing the processed results.
      */
-    public DArray mapToSelf(DArray input) {
-        return map(input, input);
+    public DArray mapToSelf(Handle handle, DArray input) {
+        return map(handle, input, input, input.length);
     }
 
     /**
@@ -198,8 +216,8 @@ public class Kernel {
      * processed by the kernel.
      * @return The {@code DArray} containing the processed results.
      */
-    public DArray mapToSelf(DArray input, int inc) {
-        return map(input, inc, input, inc);
+    public DArray mapToSelf(Handle handle, DArray input, int inc, int n) {
+        return map(handle, input, inc, input, inc, n);
     }
 
     /**
@@ -210,7 +228,52 @@ public class Kernel {
      * processed by the kernel.
      * @return The {@code DArray} containing the processed results.
      */
-    public DArray mapToSelf(Vector input) {
-        return map(input, input);
+    public DArray mapToSelf(Handle handle, Vector input) {
+        return map(handle, input, input);
     }
+
+    /**
+     * Cleans up resources by unloading the CUDA module.
+     */
+    public void close() {
+        cleanable.clean();
+    }
+
+    /**
+     * Manages the kernels that implement commonly used math functions.
+     *
+     * @author E. Dov Neimand
+     */
+    private static class GPUMath extends HashMap<String, Kernel> implements AutoCloseable {
+
+
+        /**
+         * Puts a kernel with the given properties in the map.
+         *
+         * @param name The name of the kernel's file. Don't include the ptx.
+         * file. The file should be in the folder src/kernels/ptx and no path is
+         * required.
+         * @param functionName The name of the function in the kernel to be
+         * called.        
+         * @return The kernel with the given properties.
+         */
+        public Kernel put(String name) {
+            
+            String fileName = name + ".ptx", functionName = name + "Kernel";
+            
+            Kernel put = get(name);
+            if (put == null) {
+                put = new Kernel(fileName, functionName);
+                put(name, put);
+            }
+            return put;
+        }
+
+        @Override
+        public void close() {
+            values().forEach(k -> k.close());
+        }
+
+    }
+
 }

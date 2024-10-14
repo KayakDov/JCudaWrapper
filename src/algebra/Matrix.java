@@ -48,7 +48,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     /**
      * Handle for managing JCublas operations, usually unique per thread.
      */
-    private Handle handle;
+    protected Handle handle;
 
     /**
      * Constructs a new Matrix from a 2D array, where each inner array
@@ -238,7 +238,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
      * @param col The column index.
      * @return The vector index: {@code col * colDist + row}.
      */
-    private int index(int row, int col) {
+    protected int index(int row, int col) {
         return col * colDist + row;
     }
 

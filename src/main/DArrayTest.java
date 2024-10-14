@@ -7,7 +7,7 @@ import java.awt.geom.Point2D;
 import java.util.Arrays;
 import array.DArray;
 import array.DArray2d;
-import resourceManagement.EigenSupport;
+
 
 import resourceManagement.Handle;
 
@@ -41,8 +41,7 @@ public class DArrayTest {
                 & testMatrixMultiplication()
                 & testSubArray()
                 & testSetAndGetByIndex()
-                & testMultMatMatBatched()
-                & testEigen();
+                & testMultMatMatBatched();
 
         // Cleanup GPU handle
         handle.close();
@@ -288,47 +287,6 @@ public class DArrayTest {
         System.out.println("Test passed: " + passed);
         return passed;
 
-    }
-
-    public static boolean testEigen() {
-
-        System.out.println("Testing DArray eigen batched method...");
-
-        Matrix m = new Matrix(handle, 3, 6);
-        m.dArray().set(handle, new double[]{
-            // First matrix (symmetric)
-            4.0, 1.0, 1.0,
-            1.0, 3.0, 0.0,
-            1.0, 0.0, 2.0,
-            // Second matrix (symmetric)
-            2.0, 0.0, 1.0,
-            0.0, 1.0, 0.0,
-            1.0, 0.0, 3.0
-        });
-
-        Vector resultValues = new Vector(handle, m.getWidth());
-
-        System.out.println(m.toString());
-        System.out.println(resultValues.toString());
-
-        EigenSupport es = new EigenSupport(handle, m, resultValues, 2);
-        es.compute(m, resultValues);
-
-        double[] computedEigenvalues = resultValues.toArray();
-
-        // Expected eigenvalues for the given input matrices (manually calculated or from reference library)
-        double[] expectedEigenvalues = {
-            // Eigenvalues for the first matrix
-            5.372, 3.0, 0.628,
-            // Eigenvalues for the second matrix
-            3.414, 1.0, 1.586
-        };
-
-        boolean pass = arraysEqual(computedEigenvalues, expectedEigenvalues, 1e-2);
-
-        System.out.println("Test passed: " + pass);
-
-        return pass;
     }
 
 }

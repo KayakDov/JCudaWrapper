@@ -859,8 +859,8 @@ public class DArray extends Array {
 
         try (DArray filler = new DArray(handle, fill)) {
             int size = height*width;
-            Kernel kern = new Kernel("fillMatrix.ptx", "fillMat", size);
-            kern.map(filler, lda, this, height);
+            Kernel kern = Kernel.get("fillMatrix");
+            kern.map(handle, filler, lda, this, height, size);
         }
 
         return this;

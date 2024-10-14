@@ -7,6 +7,7 @@ import org.apache.commons.math3.exception.DimensionMismatchException;
 import resourceManagement.Handle;
 import array.DArray2d;
 import array.IArray;
+import array.Kernel;
 
 /**
  * A class representing a batch of matrices stored in GPU memory, allowing
@@ -31,7 +32,7 @@ import array.IArray;
  *
  * @author E. Dov Neimand
  */
-public class MatrixBatchPointers implements AutoCloseable {
+public class MatrixBatchPntrs implements AutoCloseable {
 
     /**
      * The number of rows (height) of each matrix in the batch.
@@ -71,7 +72,7 @@ public class MatrixBatchPointers implements AutoCloseable {
      * @param arrays The underlying data arrays that store the batch of
      * matrices.
      */
-    public MatrixBatchPointers(int height, int width, int colDist, DArray2d arrays) {
+    public MatrixBatchPntrs(int height, int width, int colDist, DArray2d arrays) {
         this.height = height;
         this.width = width;
         this.colDist = colDist;
@@ -89,7 +90,7 @@ public class MatrixBatchPointers implements AutoCloseable {
      * @param width The width of each sub matrix.
      * @param batchSize The number of sub matrices.
      */
-    public MatrixBatchPointers(Matrix contains, Consumer<Point> step, int height, int width, int batchSize) {
+    public MatrixBatchPntrs(Matrix contains, Consumer<Point> step, int height, int width, int batchSize) {
 
         this(
                 height,
@@ -110,7 +111,7 @@ public class MatrixBatchPointers implements AutoCloseable {
      * @param height The height of each sub matrix.
      * @param width The width of each sub matrix.
      */
-    public MatrixBatchPointers(Matrix contains, int downStride, int rightStride, int height, int width) {
+    public MatrixBatchPntrs(Matrix contains, int downStride, int rightStride, int height, int width) {
 
         this(contains, p -> {
             p.y += downStride;
@@ -140,10 +141,9 @@ public class MatrixBatchPointers implements AutoCloseable {
 
         Point p = new Point(0, 0);
 
-        for (int i = 0; i < batchSize; i++) {
-            step.accept(p);
-            arrays[i] = contains.getSubMatrix(p.y, p.y + height, p.x, p.x + width).dArray();
-        }
+        for (int i = 0; i < batchSize; i++, step.accept(p)) 
+            arrays[i] = contains.getSubMatrix(p.y, p.y + height, p.x, p.x + width).dArray();            
+        
         return new DArray2d(contains.getHandle(), arrays);
     }
 
@@ -170,7 +170,7 @@ public class MatrixBatchPointers implements AutoCloseable {
      * @throws ArrayIndexOutOfBoundsException If the sizes of the matrix batches
      * A, B, and this batch do not match.
      */
-    public MatrixBatchPointers addToMeMatMatMult(Handle handle, double timesAB, MatrixBatchPointers a, MatrixBatchPointers b, double timesThis) {
+    public MatrixBatchPntrs addToMeMatMatMult(Handle handle, double timesAB, MatrixBatchPntrs a, MatrixBatchPntrs b, double timesThis) {
         // Ensure the dimensions are compatible for matrix multiplication
         if (a.width != b.height) {
             throw new DimensionMismatchException(a.width, b.height);
@@ -267,25 +267,24 @@ public class MatrixBatchPointers implements AutoCloseable {
      *
      * @return A shallow copy of this batch.
      */
-    public MatrixBatchPointers shallowCopy() {
-        MatrixBatchPointers copy = new MatrixBatchPointers(height, width, colDist, arrays);
+    public MatrixBatchPntrs shallowCopy() {
+        MatrixBatchPntrs copy = new MatrixBatchPntrs(height, width, colDist, arrays);
         copy.transposeForOperations = transposeForOperations;
         return copy;
     }
-    
+
     /**
-     * LU factorization of all the square sub matrices.  Each matrix will be replaced
-     * by it's LU factorization.  The diagonal of the L is all ones and it is omitted.
-     * For example {6,2,3,4} has L = {1,6,0,1} and U = {2,0,3,4}.
+     * LU factorization of all the square sub matrices. Each matrix will be
+     * replaced by it's LU factorization. The diagonal of the L is all ones and
+     * it is omitted. For example {6,2,3,4} has L = {1,6,0,1} and U = {2,0,3,4}.
+     *
      * @param handle
-     * @param info 
+     * @param info
      */
-    public void LU(Handle handle, IArray info){
+    public void LU(Handle handle, IArray info) {
         arrays.luFactorizationBatched(handle, height, colDist, height, info);
     }
 
-    
-    
     /**
      * Performs batched eigenvector computation for symmetric matrices.
      *
@@ -315,7 +314,59 @@ public class MatrixBatchPointers implements AutoCloseable {
     public void choleskyFactorization(Handle handle, IArray info, DArray2d.Fill fill) {
         arrays.choleskyFactorization(handle, width, colDist, info, fill);
     }
-        
+
+    /**
+     * Solves a symmetric positive definite system of linear equations A * x =
+     * b, where A is a symmetric matrix that has undergone Cholesky
+     * factorization and B and X are matrices of right-hand side vectors and
+     * solutions, respectively.
+     *
+     * This method utilizes the cuSolver library and the
+     * `cusolverDnDpotrsBatched` function to solve a batch of systems using the
+     * Cholesky factorization. The matrix A must be symmetric positive definite.
+     *
+     * The input matrix A is provided in packed format, with either the upper or
+     * lower triangular part of the matrix being supplied based on the `fillA`
+     * parameter.
+     *
+     * This method checks for valid inputs and initializes the info array if not
+     * provided. The `info` array stores error messages for each matrix in the
+     * batch.
+     *
+     * @param handle The cuSolver handle, which is required for cuSolver library
+     * operations. Must not be null.
+     * @param b The right hand side of Ax = b that will hold the solution when
+     * done.
+     * @param fill Indicates whether the upper or lower triangular part of A is
+     * stored. It should be either {@link Fill#UPPER} or {@link Fill#LOWER}.
+     * @param info An optional output array to store the status of each system
+     * in the batch. If `info == null`, an array will be created internally. If
+     * info is not null, it must have a length equal to the number of matrices
+     * in the batch.
+     *
+     * @throws IllegalArgumentException if the handle, fillA, or b is null.
+     * @throws IllegalArgumentException if any of the dimensions (heightA,
+     * widthBAndX, lda, ldb) are not positive.
+     */
+    public void solveSymmetric(Handle handle, MatrixBatchPntrs b, IArray info, DArray2d.Fill fill) {
+        arrays.solveCholesky(handle, fill, height, colDist, b.arrays, b.colDist, info);
+    }
+
+    /**
+     * Shifts where all the pointer point to.
+     * @param right The distance to shift them to the right.
+     * @param down  The distance to shift them down.
+     */
+    public void shiftPointers(Handle handle, int right, int down){
+        Kernel.get("pointerShift").map(
+                handle, 
+                arrays, 1, 
+                arrays, 
+                down + right*colDist, 
+                arrays.length
+        );
+    }
+    
     /**
      * closes the underlying array of pointers to data. This should only be
      * called if the resource is not being used by any other objects. This
@@ -326,5 +377,5 @@ public class MatrixBatchPointers implements AutoCloseable {
     public void close() {
         arrays.close();
     }
-    
+
 }

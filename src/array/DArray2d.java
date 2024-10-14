@@ -52,7 +52,7 @@ public class DArray2d extends Array {
         super(empty(arrays.length, PrimitiveType.POINTER), arrays.length, PrimitiveType.POINTER);
         Pointer[] pointers = Arrays.stream(arrays).map(a -> a.pointer).toArray(Pointer[]::new);
         set(handle, Pointer.to(pointers), length);
-        lengthOfArrays = arrays.length;
+        lengthOfArrays = arrays[0].length;
     }
 
     /**
@@ -355,7 +355,7 @@ public class DArray2d extends Array {
                 length // Number of matrices
         );
     }
-    
+
     /* Doesn't work because Jacobiparms doesn't work.
      * 
      * Creates an auxiliary workspace for cusolverDnDsyevjBatched using
@@ -397,7 +397,8 @@ public class DArray2d extends Array {
 
         return lwork[0];
     }
-    //Doesn't work because JacobiParams doesn't work.
+
+//Doesn't work because JacobiParams doesn't work.
     /**
      * https://docs.nvidia.com/cuda/cusolver/index.html?highlight=cusolverDnCheevjBatched#cuSolverDN-lt-t-gt-syevjbatch
      *
@@ -446,19 +447,85 @@ public class DArray2d extends Array {
                 jp.getParams(), // Jacobi algorithm parameters
                 batchCount // Number of matrices in the batch
         );
-            // Step 5: Check for convergence status in info array
-            int[] infoHost = new int[batchCount]; // Host array to fetch status
+//            // Step 5: Check for convergence status in info array
+//            int[] infoHost = new int[batchCount]; // Host array to fetch status
+//
+//            try (Handle hand = new Handle()) {
+//                info.get(hand, infoHost, 0, 0, batchCount);
+//            }
+//
+//            for (int i = 0; i < batchCount; i++) {
+//                if (infoHost[i] != 0) {
+//                    System.err.println("Matrix " + i + " failed to converge: info = " + infoHost[i]);
+//                }
+//            }
 
-            try (Handle hand = new Handle()) {
-                info.get(hand, infoHost, 0, 0, batchCount);
-            }
-
-            for (int i = 0; i < batchCount; i++) {
-                if (infoHost[i] != 0) {
-                    System.err.println("Matrix " + i + " failed to converge: info = " + infoHost[i]);
-                }
-            }
     }
+
+    /**
+     * Solves a symmetric positive definite system of linear equations A * x =
+     * b, where A is a symmetric matrix that has undergone Cholesky
+     * factorization and B and X are matrices of right-hand side vectors and
+     * solutions, respectively.
+     *
+     * This method utilizes the cuSolver library and the
+     * `cusolverDnDpotrsBatched` function to solve a batch of systems using the
+     * Cholesky factorization. The matrix A must be symmetric positive definite.
+     *
+     * The input matrix A is provided in packed format, with either the upper or
+     * lower triangular part of the matrix being supplied based on the `fillA`
+     * parameter.
+     *
+     * This method checks for valid inputs and initializes the info array if not
+     * provided. The `info` array stores error messages for each matrix in the
+     * batch.
+     *
+     * @param handle The cuSolver handle, which is required for cuSolver library
+     * operations. Must not be null.
+     * @param fillA Indicates whether the upper or lower triangular part of A is
+     * stored. It should be either {@link Fill#UPPER} or {@link Fill#LOWER}.
+     * @param heightA The number of rows of the matrix A.
+     * @param lda The leading dimension of the matrix A.
+     * @param b The right-hand side matrix B and will store the solution matrix
+     * X after computation. The input matrix must be stored in column-major
+     * order on the GPU.
+     * @param ldb The leading dimension of the matrix B.
+     * @param info An optional output array to store the status of each system
+     * in the batch. If `info == null`, an array will be created internally. If
+     * info is not null, it must have a length equal to the number of matrices
+     * in the batch.
+     *
+     * @throws IllegalArgumentException if the handle, fillA, or b is null.
+     * @throws IllegalArgumentException if any of the dimensions (heightA,
+     * widthBAndX, lda, ldb) are not positive.
+     */
+    public void solveCholesky(Handle handle, Fill fillA, int heightA, int lda, DArray2d b, int ldb, IArray info) {
+
+        checkNull(handle, fillA, b);
+        checkPos(heightA, lda, ldb);
+
+        boolean cleanInfo = false;
+        if (info == null) {
+            info = IArray.empty(length);
+            cleanInfo = true;
+        }
+        JCusolverDn.cusolverDnDpotrsBatched(
+                handle.solverHandle(), fillA.getFillMode(),
+                heightA, 1,
+                pointer, lda,
+                b.pointer, ldb,
+                info.pointer,
+                length
+        );
+        if (cleanInfo) info.close();
+    }
+
+    
+    public static void main(String[] args) {
+        Handle handle = new Handle();
+        DArray data = new DArray(handle, 1,5,10);
+        DArray2d a2d = new DArray2d(handle, new DArray[]{data});
+        
+    }
+    
 }
-
-

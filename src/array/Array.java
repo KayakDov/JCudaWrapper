@@ -241,10 +241,7 @@ abstract class Array implements AutoCloseable {
      * @param handle The handle.
      * @throws ArrayIndexOutOfBoundsException if any index is out of bounds or size is negative.
      */
-    protected void set(Handle handle, Pointer fromCPUArray, int toIndex, int fromIndex, int size) {
-        checkPos(toIndex, fromIndex, size);
-        checkAgainstLength(toIndex + size);
-        
+    protected void set(Handle handle, Pointer fromCPUArray, int toIndex, int fromIndex, int size) {        
         copy(handle, this, fromCPUArray, toIndex, fromIndex, size, type);
     }
 

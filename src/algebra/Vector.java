@@ -480,7 +480,7 @@ public class Vector extends RealVector implements AutoCloseable {
     public Vector getSubVector(int begin, int length, int increment) throws NotPositiveException, OutOfRangeException {
         return new Vector(
                 handle, 
-                data.subArray(begin * inc, inc * increment * length), 
+                data.subArray(begin * inc, inc * increment * (length - 1) + 1), 
                 inc * increment
         );
     }
@@ -595,7 +595,7 @@ public class Vector extends RealVector implements AutoCloseable {
      */
     @Override
     public String toString() {
-        return copy().data.toString();
+        return Arrays.toString(toArray());
     }
 
     /**
@@ -1308,4 +1308,10 @@ public class Vector extends RealVector implements AutoCloseable {
         addBatchVecVecMult(1, a, aStride, b, bStride, 0);
     }
 
+    
+    public Vector[] parition(int numParts){
+        Vector[] part = new Vector[numParts];
+        Arrays.setAll(part, i -> getSubVector(i, getDimension()/numParts, numParts));
+        return part;
+    }
 }

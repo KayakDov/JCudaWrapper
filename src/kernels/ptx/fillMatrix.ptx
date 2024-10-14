@@ -10,14 +10,14 @@
 .target sm_52
 .address_size 64
 
-	// .globl	fillMat
+	// .globl	fillMatrix
 
-.visible .entry fillMat(
-	.param .u64 fillMat_param_0,
-	.param .u32 fillMat_param_1,
-	.param .u64 fillMat_param_2,
-	.param .u32 fillMat_param_3,
-	.param .u32 fillMat_param_4
+.visible .entry fillMatrix(
+	.param .u64 fillMatrix_param_0,
+	.param .u32 fillMatrix_param_1,
+	.param .u64 fillMatrix_param_2,
+	.param .u32 fillMatrix_param_3,
+	.param .u32 fillMatrix_param_4
 )
 {
 	.reg .pred 	%p<2>;
@@ -26,11 +26,11 @@
 	.reg .b64 	%rd<7>;
 
 
-	ld.param.u64 	%rd1, [fillMat_param_0];
-	ld.param.u32 	%r2, [fillMat_param_1];
-	ld.param.u64 	%rd2, [fillMat_param_2];
-	ld.param.u32 	%r3, [fillMat_param_3];
-	ld.param.u32 	%r4, [fillMat_param_4];
+	ld.param.u64 	%rd1, [fillMatrix_param_0];
+	ld.param.u32 	%r2, [fillMatrix_param_1];
+	ld.param.u64 	%rd2, [fillMatrix_param_2];
+	ld.param.u32 	%r3, [fillMatrix_param_3];
+	ld.param.u32 	%r4, [fillMatrix_param_4];
 	mov.u32 	%r5, %ctaid.x;
 	mov.u32 	%r6, %ntid.x;
 	mov.u32 	%r7, %tid.x;
