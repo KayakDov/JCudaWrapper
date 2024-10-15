@@ -46,11 +46,11 @@ public class MatrixBatchStride extends Matrix {
         this.batchSize = batchSize;
         this.subWidth = subWidth;
     }
-    
+
     /**
-     * Constructor for creating a batch of square strided matrices. Each matrix is
-     * stored with a specified stride and the batch is represented as a single
-     * contiguous block in memory. These matrices have no overlap.
+     * Constructor for creating a batch of square strided matrices. Each matrix
+     * is stored with a specified stride and the batch is represented as a
+     * single contiguous block in memory. These matrices have no overlap.
      *
      * @param handle The handle for resource management and creating this
      * matrix. It will stay with this matrix instance.
@@ -60,12 +60,11 @@ public class MatrixBatchStride extends Matrix {
     public MatrixBatchStride(Handle handle, int subHeight, int batchSize) {
         this(handle, subHeight, subHeight, batchSize);
     }
-    
-    
+
     /**
-     * Constructor for creating a batch of square strided matrices. Each matrix is
-     * stored with a specified stride and the batch is represented as a single
-     * contiguous block in memory. These matrices have no overlap.
+     * Constructor for creating a batch of square strided matrices. Each matrix
+     * is stored with a specified stride and the batch is represented as a
+     * single contiguous block in memory. These matrices have no overlap.
      *
      * @param handle The handle for resource management and creating this
      * matrix. It will stay with this matrix instance.
@@ -74,7 +73,7 @@ public class MatrixBatchStride extends Matrix {
      * @param batchSize The number of matrices in this batch.
      */
     public MatrixBatchStride(Handle handle, int subHeight, int subWidth, int batchSize) {
-        this(handle, subHeight, subHeight, subHeight*subWidth, batchSize);
+        this(handle, subHeight, subHeight, subHeight * subWidth, batchSize);
     }
 
     /**
@@ -349,19 +348,20 @@ public class MatrixBatchStride extends Matrix {
      * matrix.
      * @param info Status of operation success.
      */
-    private void computeVecs(Vector values, MatrixBatchStride b, IArray info) {
-
-        MatrixBatchPntrs pointersA = getPointers(), 
+    private void computeVecs(Vector values, MatrixBatchStride b) {
+        MatrixBatchPntrs pointersA = getPointers(),
                 pointersB = new MatrixBatchPntrs(
-                this, getSubHeight(), getSubWidth(), getHeight(), 1
-        );
+                        b, getSubHeight(), getSubWidth(), getHeight(), 1
+                );
 
         Vector[] value = values.parition(getHeight());
 
+        IArray pivotArray = IArray.empty(A.getHeight()*batchSize);
+        
+        //TODO: create pivot, and info, and whatever else is needed to get computeVec functioning.  MatrixBatchStrideB might also need to be made here.  It's not like there's lots of free memory floating around, unless there is.        
         for (int i = 0; i < getHeight(); i++) {
-            pointersB.shiftPointers(handle, 1, 0);
             computeVec(value[i], pointersA, pointersB, info);
-
+            pointersB.shiftPointers(handle, 1, 0);
         }
         pointersA.close();
         pointersB.close();
@@ -369,21 +369,29 @@ public class MatrixBatchStride extends Matrix {
 
     /**
      * Computes the eigenvector for an eigenvalue. The matrices must be
-     * symmetric positive definite.
+     * symmetric positive definite. 
+     * 
+     * TODO: this method currently solves with LU
+     * factorization. There may be a faster method that uses Cholesky
+     * decomposition since this method will be used on positive definite
+     * matrices. However, A - lambda v is not positive definite, even if A is,
+     * so a more complex approach is required.
      *
      * @param values The eigenvalues.
      * @param b Where the eigenvector will be placed.
      * @param info The success of the computations.
      */
-    private void computeVec(Vector values, MatrixBatchPntrs A, MatrixBatchPntrs b, IArray info) {
+    private void computeVec(Vector values, MatrixBatchStride A, MatrixBatchPntrs b, IArray info, IArray pivot, MatrixBatchStride auxileryMatrixWorkSpace, DArray2d pntrsWorkSpace) {
 
-        for (int i = 0; i < getHeight(); i++) get(i, i).addToMe(-1, values);
+        A.copy(auxileryMatrixWorkSpace);
+        
+        for (int i = 0; i < getHeight(); i++) auxileryMatrixWorkSpace.get(i, i).addToMe(-1, values);
 
-        A.choleskyFactorization(values.getHandle(), info, DArray2d.Fill.UPPER);
-        A.solveSymmetric(values.getHandle(), b, info, DArray2d.Fill.FULL);
-
-        for (int i = 0; i < getHeight(); i++) get(i, i).addToMe(1, values);
-
+        MatrixBatchPntrs ptrsCopyA = auxileryMatrixWorkSpace.getPointers(pntrsWorkSpace);
+        
+        ptrsCopyA.LUFactor(handle, pivot, info);
+        ptrsCopyA.solveLUFactored(handle, b, pivot, info);
+        
     }
 
     /**
@@ -392,7 +400,19 @@ public class MatrixBatchStride extends Matrix {
      * @return
      */
     public MatrixBatchPntrs getPointers() {
-        return new MatrixBatchPntrs(this, getHeight(), getSubWidth(), getSubHeight(), getSubWidth());
+        
+        return getPointers(DArray2d.empty(batchSize, getSubHeight()*getSubWidth()));
+    }
+    
+    /**
+     * Returns this matrix as a set of pointers.
+     *
+     * @param putPointersHere An array where the pointers will be stored.
+     * @return
+     */
+    public MatrixBatchPntrs getPointers(DArray2d putPointersHere) {
+        return new  MatrixBatchPntrs(handle, getSubHeight(), getSubWidth(), colDist, 0, getSubWidth(), putPointersHere, this);
+        
     }
 
     @Override
@@ -403,35 +423,54 @@ public class MatrixBatchStride extends Matrix {
     @Override
     public String toString() {
         StringBuilder sb = new StringBuilder();
-        for(int i = 0; i < batchSize; i++)
-            sb.append(getSubMatrix(0, getHeight(), i*getSubWidth(), (i + 1)*getSubWidth())).append("\n");
+        for (int i = 0; i < batchSize; i++)
+            sb.append(getSubMatrix(0, getHeight(), i * getSubWidth(), (i + 1) * getSubWidth())).append("\n");
         return sb.toString();
+    }
+
+    @Override
+    public MatrixBatchStride copy() {
+        MatrixBatchStride copy = new MatrixBatchStride(handle, getSubHeight(), subWidth, stride, batchSize);
+        return copy(copy);
+    }
+    
+    /**
+     * Copies from this matrix into the proffered matrix.
+     * @param copyTo becomes a copy of this matrix.
+     * @return the copy.
+     */
+    public MatrixBatchStride copy(MatrixBatchStride copyTo) {        
+        if(colDist == getHeight()) copyTo.dArray().set(handle, dArray(), 0, 0, getWidth());
+        else copyTo.addAndSet(1, this, 0, this);
+        return copyTo;
     }
     
     
-    
-    
+
     public static void main(String[] args) {
-        Handle handle = new Handle();
-        
-        MatrixBatchStride mbs = new MatrixBatchStride(handle, 2, 2);
-                
-        mbs.dArray().set(handle, new double[]{4,2,2,3,9,0,0,16});
-        
-        Vector workSpace = new Vector(handle, 4);
-        
-        Vector eigenVals = mbs.computeVals2x2(workSpace);
-        
-        System.out.println(eigenVals);
-        
-        
-        IArray info = IArray.empty(4);
-        
-        MatrixBatchStride eigenVecs = new MatrixBatchStride(handle, 2, 2);
-        mbs.computeVecs(eigenVals, eigenVecs, info);
-        
-        System.out.println(eigenVals);
-        System.out.println(eigenVecs);
+        try (Handle handle = new Handle()) {
+
+            MatrixBatchStride mbs = new MatrixBatchStride(handle, 2, 2);
+
+            mbs.dArray().set(handle, new double[]{4, 2, 2, 3, 9, 0, 0, 16});
+
+            Vector workSpace = new Vector(handle, 4);
+
+            Vector eigenVals = mbs.computeVals2x2(workSpace);
+
+            System.out.println(eigenVals);
+
+            IArray info = IArray.empty(4);
+
+            MatrixBatchStride eigenVecs = new MatrixBatchStride(handle, 2, 2);
+            mbs.computeVecs(eigenVals, eigenVecs, info);
+
+            System.out.println(eigenVecs.toString());
+
+            mbs.close();
+            workSpace.close();
+            eigenVals.close();
+        }
     }
 
 }

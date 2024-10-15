@@ -4,6 +4,7 @@ import algebra.Vector;
 import java.io.File;
 import java.lang.ref.Cleaner;
 import java.util.HashMap;
+import jcuda.NativePointerObject;
 import jcuda.Pointer;
 import jcuda.driver.CUfunction;
 import jcuda.driver.CUmodule;
@@ -88,8 +89,7 @@ public class Kernel implements AutoCloseable {
      *
      * @param name not including the .ptx which the file must have. Also not
      * including any of the path so long as the file is in the kernel/ptx
-     * folder.     
-     
+     * folder.      *
      * @return The Kernel.
      */
     public static Kernel get(String name) {
@@ -110,20 +110,25 @@ public class Kernel implements AutoCloseable {
      * results will be stored.
      * @param incOutput The increment for the output array.
      * @param n The number of elements to be mapped.
+     * @param additionalParmaters These should all be pointers to cpu arrays or
+     * pointers to device pointers.
      * @return The {@code DArray} containing the processed results.
      */
-    public <T extends Array> T map(Handle handle, T input, int incInput, T output, int incOutput, int n) {
+    public <T extends Array> T map(Handle handle, T input, int incInput, T output, int incOutput, int n, Pointer... additionalParmaters) {
+
+        
+        NativePointerObject[] pointers = new NativePointerObject[additionalParmaters.length + 5];
+        pointers[0] = Pointer.to(input.pointer);
+        pointers[1] = IArray.cpuPointer(incInput);
+        pointers[2] = Pointer.to(output.pointer);
+        pointers[3] = IArray.cpuPointer(incOutput);
+        pointers[4] = IArray.cpuPointer(n);
+        
+        System.arraycopy(additionalParmaters, 0, pointers, 5, additionalParmaters.length);
+        
+        Pointer kernelParameters = Pointer.to(pointers);
 
         int gridSize = (int) Math.ceil((double) n / BLOCK_SIZE);
-
-        Pointer kernelParameters = Pointer.to(
-                Pointer.to(input.pointer),
-                IArray.cpuPointer(incInput),
-                Pointer.to(output.pointer),
-                IArray.cpuPointer(incOutput),
-                IArray.cpuPointer(n)
-        );
-
         int result = JCudaDriver.cuLaunchKernel(
                 function,
                 gridSize, 1, 1, // Grid size (number of blocks)
@@ -137,7 +142,30 @@ public class Kernel implements AutoCloseable {
 
         return output;
     }
-
+    
+    
+    /**
+     * Runs the loaded CUDA kernel with the specified input and output arrays on
+     * a specified stream. Note, a stream is generated for this method, so be
+     * sure that the data is synchronized before and after.
+     *
+     * @param <T> The type of array.
+     * @param handle
+     * @param input The {@code DArray} representing the input data to be
+     * processed by the kernel.
+     * @param incInput The increment for the input array.
+     * @param output The {@code DArray} representing the output data where
+     * results will be stored.
+     * @param incOutput The increment for the output array.
+     * @param n The number of elements to be mapped.
+     * @param shift additional parameters.
+     * @return The {@code DArray} containing the processed results.
+     */
+    public <T extends Array> T map(Handle handle, T input, int incInput, T output, int incOutput, int n, int shift) {
+        return map(handle, input, incInput, output, incOutput, n, IArray.cpuPointer(shift));
+    }
+    
+    
     /**
      * Checks for error messages, and throws an exception if the operation
      * failed.
@@ -246,7 +274,6 @@ public class Kernel implements AutoCloseable {
      */
     private static class GPUMath extends HashMap<String, Kernel> implements AutoCloseable {
 
-
         /**
          * Puts a kernel with the given properties in the map.
          *
@@ -254,13 +281,13 @@ public class Kernel implements AutoCloseable {
          * file. The file should be in the folder src/kernels/ptx and no path is
          * required.
          * @param functionName The name of the function in the kernel to be
-         * called.        
+         * called.
          * @return The kernel with the given properties.
          */
         public Kernel put(String name) {
-            
+
             String fileName = name + ".ptx", functionName = name + "Kernel";
-            
+
             Kernel put = get(name);
             if (put == null) {
                 put = new Kernel(fileName, functionName);

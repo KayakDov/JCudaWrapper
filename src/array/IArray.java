@@ -1,5 +1,6 @@
 package array;
 
+import java.util.Arrays;
 import jcuda.Pointer;
 import jcuda.driver.CUdeviceptr;
 import resourceManagement.Handle;
@@ -65,6 +66,15 @@ public class IArray extends Array {
      */
     static Pointer cpuPointer(int d) {
         return Pointer.to(new int[]{d});
+    }
+
+    @Override
+    public String toString() {
+        try (Handle hand = new Handle()) {
+            int[] cpuArray = new int[length];
+            get(hand, cpuArray, 0, 0, length);
+            return Arrays.toString(cpuArray);
+        }
     }
 
 }

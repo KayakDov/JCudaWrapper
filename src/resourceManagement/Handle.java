@@ -158,7 +158,7 @@ public class Handle implements AutoCloseable {
         if (cuStream == null) {
             cuStream = new CUstream();
             JCudaDriver.cuStreamCreate(cuStream, CUstream_flags.CU_STREAM_DEFAULT);
-            cleanableSolverHandle = ResourceDealocator.register(this,
+            cleanableCUStream = ResourceDealocator.register(this,
                     cuStream -> JCudaDriver.cuStreamDestroy(cuStream), cuStream);
         }
         

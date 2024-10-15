@@ -1,5 +1,6 @@
 package algebra;
 
+import array.DArray;
 import java.awt.Point;
 import java.util.function.Consumer;
 
@@ -78,6 +79,31 @@ public class MatrixBatchPntrs implements AutoCloseable {
         this.colDist = colDist;
         this.arrays = arrays;
     }
+    
+    
+    /**
+     * Inserts pointers to a batch of matrices into the proffered device array.
+     *
+     * @param handle
+     * @param height The height (number of rows) of each matrix.
+     * @param width The width (number of columns) of each matrix.
+     * @param colDist The number of elements between the first element of each
+     * column (column stride or leading dimension).
+     * @param stepDown How much to step down from the previous pointer.
+     * @param stepRight Howe much to step right from the previous pointer.
+     * @param storePointersHere The underlying data arrays that store the batch of
+     * matrices.
+     * @param container
+     */
+    public MatrixBatchPntrs(Handle handle, int height, int width, int colDist, int stepDown, int stepRight, DArray2d storePointersHere, Matrix container) {
+        this(height, width, colDist, storePointersHere);
+        Kernel.get("genPtrs").map(
+                handle, 
+                storePointersHere, 1, 
+                new DArray2d(handle, new DArray[]{container.dArray()}), stepDown + stepRight*colDist, 
+                storePointersHere.length
+        );
+    }
 
     /**
      * Creates a batch of matrices from the sub matrices of contains.
@@ -100,6 +126,8 @@ public class MatrixBatchPntrs implements AutoCloseable {
         );
     }
 
+    
+    
     /**
      * Creates a batch of matrices from the sub matrices of contains.
      *
@@ -113,15 +141,26 @@ public class MatrixBatchPntrs implements AutoCloseable {
      */
     public MatrixBatchPntrs(Matrix contains, int downStride, int rightStride, int height, int width) {
 
-        this(contains, p -> {
+        this(height, width, height, pointerSeter(contains, downStride, rightStride, height, width));
+    }
+    
+    /**
+     * A consumer for setting pointers from a containing matrix.
+     * @param contains A matrix containing all the elements to be pointed to.
+     * @param downStride How far down each new pointer points.
+     * @param rightStride How far to the right each new pointer points.
+     * @param height The height of each matrix being pointed to.
+     * @param width The width of each matrix being pointed to.
+     * @return 
+     */
+    public static DArray2d pointerSeter(Matrix contains, int downStride, int rightStride, int height, int width){
+        return getDarray(contains, p -> {
             p.y += downStride;
             if (p.y >= contains.getHeight()) {
                 p.y = 0;
                 p.x += rightStride;
             }
-        },
-                height, width,
-                (contains.getHeight() / downStride) * (contains.getWidth() / rightStride));
+        }, height, width, (contains.getHeight() / downStride) * (contains.getWidth() / rightStride));
     }
 
     /**
@@ -136,14 +175,14 @@ public class MatrixBatchPntrs implements AutoCloseable {
      * @param batchSize The number of sub matrices.
      * @return The data for each sub matrix.
      */
-    private static DArray2d getDarray(Matrix contains, Consumer<Point> step, int height, int width, int batchSize) {
+    public static DArray2d getDarray(Matrix contains, Consumer<Point> step, int height, int width, int batchSize) {
         array.DArray[] arrays = new array.DArray[batchSize];
 
         Point p = new Point(0, 0);
 
-        for (int i = 0; i < batchSize; i++, step.accept(p)) 
-            arrays[i] = contains.getSubMatrix(p.y, p.y + height, p.x, p.x + width).dArray();            
-        
+        for (int i = 0; i < batchSize; i++, step.accept(p))
+            arrays[i] = contains.getSubMatrix(p.y, p.y + height, p.x, p.x + width).dArray();
+
         return new DArray2d(contains.getHandle(), arrays);
     }
 
@@ -274,18 +313,6 @@ public class MatrixBatchPntrs implements AutoCloseable {
     }
 
     /**
-     * LU factorization of all the square sub matrices. Each matrix will be
-     * replaced by it's LU factorization. The diagonal of the L is all ones and
-     * it is omitted. For example {6,2,3,4} has L = {1,6,0,1} and U = {2,0,3,4}.
-     *
-     * @param handle
-     * @param info
-     */
-    public void LU(Handle handle, IArray info) {
-        arrays.luFactorizationBatched(handle, height, colDist, height, info);
-    }
-
-    /**
      * Performs batched eigenvector computation for symmetric matrices.
      *
      * This function computes the Cholesky factorization of a sequence of
@@ -354,19 +381,21 @@ public class MatrixBatchPntrs implements AutoCloseable {
 
     /**
      * Shifts where all the pointer point to.
+     *
+     * @param handle The handle
      * @param right The distance to shift them to the right.
-     * @param down  The distance to shift them down.
+     * @param down The distance to shift them down.
      */
-    public void shiftPointers(Handle handle, int right, int down){
+    public void shiftPointers(Handle handle, int right, int down) {
         Kernel.get("pointerShift").map(
-                handle, 
-                arrays, 1, 
-                arrays, 
-                down + right*colDist, 
-                arrays.length
+                handle,
+                arrays, 1,
+                arrays, 1,
+                arrays.length,
+                down + right * colDist
         );
     }
-    
+
     /**
      * closes the underlying array of pointers to data. This should only be
      * called if the resource is not being used by any other objects. This
@@ -376,6 +405,44 @@ public class MatrixBatchPntrs implements AutoCloseable {
     @Override
     public void close() {
         arrays.close();
+    }
+
+    
+    /**
+     * Replaces this matrix with the lu factorization.  L has unit diagonal
+     * so the diagoanal in this matrix will be U's.
+     * @see https://docs.nvidia.com/cuda/cublas/index.html#cublas-t-getrfbatched
+     * @param handle The handle
+     * @param pivotArray output indicating which pivots took place.  This should have width*batchsize elements.
+     * @param info Output indicating what if anything went wrong.Should be batchsize in length.
+     */
+    public void LUFactor(Handle handle, IArray pivotArray, IArray info){
+        arrays.luFactorization(handle, width, colDist, pivotArray, info);
+    }
+    
+    /**
+     * Solves a set of matrix Ax=b where A has undergone LU factorization.
+     * @param handle The handle.
+     * @param b The solution and right hand side.
+     * @param pivotArray The pivot array generated by LU factorization.
+     * @param info Information about the result we be placed here.
+     */
+    public void solveLUFactored(Handle handle, MatrixBatchPntrs b, IArray pivotArray, IArray info){
+        arrays.solveWithLUFactored(handle, transposeForOperations, 
+                width, b.width, colDist, b.colDist, pivotArray, b.arrays, info);
+    }
+    
+    @Override
+    public String toString() {
+        try (Handle handle = new Handle()) {
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < arrays.length; i++)
+                sb.append(arrays.get(handle, i).toString());
+            handle.synch();
+            sb.append("\n").append(arrays.toString());
+            return sb.toString();
+        }
+
     }
 
 }
