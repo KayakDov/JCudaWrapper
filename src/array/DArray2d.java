@@ -15,7 +15,7 @@ import jcuda.jcublas.cublasStatus;
 import jcuda.jcusolver.JCusolverDn;
 import jcuda.jcusolver.cusolverEigMode;
 import jcuda.jcusolver.cusolverStatus;
-import resourceManagement.JacobiParams;
+import resourceManagement.MySyevjInfo;
 
 /**
  * Class for managing a batched 2D array of arrays (DArrays) on the GPU and
@@ -51,7 +51,8 @@ public class DArray2d extends Array {
      * nonempty.
      */
     public DArray2d(Handle handle, DArray[] arrays) {
-        super(empty(arrays.length, PrimitiveType.POINTER), arrays.length, PrimitiveType.POINTER);
+        super(empty(arrays.length, PrimitiveType.POINTER), arrays.length,
+                PrimitiveType.POINTER);
 
         CUdeviceptr[] pointers = new CUdeviceptr[length];
         Arrays.setAll(pointers, i -> arrays[i].pointer);
@@ -70,7 +71,8 @@ public class DArray2d extends Array {
      */
     public static DArray2d empty(int length, int lengthOfArrays) {
         checkPos(length);
-        return new DArray2d(Array.empty(length, PrimitiveType.POINTER), lengthOfArrays, length);
+        return new DArray2d(Array.empty(length, PrimitiveType.POINTER),
+                lengthOfArrays, length);
     }
 
     /**
@@ -207,7 +209,9 @@ public class DArray2d extends Array {
      * upper triangle, and full for full triangles.
      */
     public static enum Fill {
-        LOWER(cublasFillMode.CUBLAS_FILL_MODE_LOWER), UPPER(cublasFillMode.CUBLAS_FILL_MODE_UPPER), FULL(cublasFillMode.CUBLAS_FILL_MODE_FULL);
+        LOWER(cublasFillMode.CUBLAS_FILL_MODE_LOWER), UPPER(
+                cublasFillMode.CUBLAS_FILL_MODE_UPPER), FULL(
+                cublasFillMode.CUBLAS_FILL_MODE_FULL);
 
         private int fillMode;
 
@@ -339,18 +343,18 @@ public class DArray2d extends Array {
 
     /**
      * Performs batched LU factorization of general matrices.
-     *https://docs.nvidia.com/cuda/cublas/index.html#cublas-t-getrfbatched
-     * This function computes the LU factorization of a sequence of general
-     * matrices A. It factors each matrix A as A = P * L * U, where P is a
-     * permutation matrix, L is lower triangular (or unit lower triangular in
-     * the case of square matrices), and U is upper triangular.
+     * https://docs.nvidia.com/cuda/cublas/index.html#cublas-t-getrfbatched This
+     * function computes the LU factorization of a sequence of general matrices
+     * A. It factors each matrix A as A = P * L * U, where P is a permutation
+     * matrix, L is lower triangular (or unit lower triangular in the case of
+     * square matrices), and U is upper triangular.
      *
      * The factorization is stored in place. The pivot array contains the pivot
      * indices for each matrix.
      *
      * @param handle Handle to cuSolver context.
-     * @param n The dimension of the matrices (nxn).
-     * @param lda Leading dimension of matrix A.
+     * @param rowsAndColumnsThis The dimension of the matrices (nxn).
+     * @param ldThis Leading dimension of matrix A.
      * @param pivotArray Array of pivots, where pivotArray[i] contains the pivot
      * indices for matrix i. This is an output array and whatever is in it will
      * be overwritten.
@@ -358,31 +362,32 @@ public class DArray2d extends Array {
      * infoArray[i] contains info for the i-th matrix. If infoArray[i] > 0, the
      * matrix is singular.
      */
-    public void luFactorization(Handle handle, int n, int lda, IArray pivotArray, IArray infoArray) {
+    public void luFactor(Handle handle, int rowsAndColumnsThis, int ldThis, IArray pivotArray, IArray infoArray) {
         checkNull(handle, pivotArray, infoArray);
-        checkPos(n, lda);
+        checkPos(rowsAndColumnsThis, ldThis);
 
         int success = JCublas2.cublasDgetrfBatched(
                 handle.get(), // cuSolver handle
-                n, // Matrix dimension
+                rowsAndColumnsThis, // Matrix dimension
                 pointer, // Input matrices (general)
-                lda, // Leading dimension
+                ldThis, // Leading dimension
                 pivotArray.pointer, // Pivot indices for each matrix
                 infoArray.pointer, // Info array for errors
                 length // Number of matrices in the batch
         );
         if (success != cusolverStatus.CUSOLVER_STATUS_SUCCESS) {
-            throw new RuntimeException("luFactorizationBatched didn't work. Here's the info array: " + infoArray.toString());
+            throw new RuntimeException(
+                    "luFactorizationBatched didn't work. Here's the info array: " + infoArray.toString());
         }
     }
 
     /**
      * Solves a system of linear equations using the LU factorization obtained
      * by `getrfBatched`.
-     *
-     * This function solves a system of linear equations A * X = B for each
-     * matrix A in the batch. It uses the LU decomposition from `getrfBatched`
-     * to find the solution.
+     * https://docs.nvidia.com/cuda/cublas/index.html#cublas-t-getrsbatched This
+     * function solves a system of linear equations A * X = B for each matrix A
+     * in the batch. It uses the LU decomposition from `getrfBatched` to find
+     * the solution.
      *
      * @param handle Handle to cuBLAS context.
      * @param transposeA true if this matrix should be transposed. False
@@ -398,12 +403,29 @@ public class DArray2d extends Array {
      * @param info Info array for status/error reporting. If infoArray[i] > 0,
      * matrix i is singular.
      */
-    public void solveWithLUFactored(Handle handle, boolean transposeA, int colsAndRowsA, int colsB, int ldThis, int ldb, IArray pivotArray, DArray2d B, IArray info) {
+    public void solveWithLUFactored(Handle handle, boolean transposeA, int colsAndRowsA,
+            int colsB, int ldThis, int ldb, IArray pivotArray, DArray2d B, IArray info) {
         checkNull(handle, pivotArray, B, info);
         checkPos(colsAndRowsA, colsB, ldThis, ldb);
 
+        System.out.println("array.DArray2d.solveWithLUFactored() says: ");
+        System.out.println("trnasposeA = " + transposeA);
+        System.out.println("colsAndRowsA = " + colsAndRowsA);
+        System.out.println("colsB = " + colsB);
+        System.out.println("ldThis = " + ldThis);
+        System.out.println("ldb = " + ldb);
+        System.out.println("pivotArray = " + pivotArray.toString());
+        System.out.println("B = " + B.toString());
+        System.out.println(
+                "memory allocated for each B pointer = " + B.lengthOfArrays);
+        System.out.println("info = " + info.toString());
+        System.out.println("this = " + toString());
+        System.out.println("batchSize = " + length);
+        System.out.println("inner array length = " + lengthOfArrays);
+
         int success = JCublas2.cublasDgetrsBatched(
-                handle.get(), DArray.transpose(transposeA),
+                handle.get(), 
+                DArray.transpose(transposeA),
                 colsAndRowsA, colsB,
                 pointer, ldThis,
                 pivotArray.pointer, // Pivot indices for each matrix
@@ -412,7 +434,8 @@ public class DArray2d extends Array {
                 length // Number of matrices in the batch
         );
         if (success != cublasStatus.CUBLAS_STATUS_SUCCESS) {
-            throw new RuntimeException("solveWithLUFactorizationBatched didn't work. Here's the info array: " + info.toString());
+            throw new RuntimeException(
+                    "solveWithLUFactorizationBatched didn't work. Here's the info array: " + info.toString());
         }
     }
 
@@ -439,7 +462,7 @@ public class DArray2d extends Array {
             int ldInput,
             DArray resultValues,
             int batchSize,
-            JacobiParams params,
+            MySyevjInfo params,
             Fill fill) {
         int[] lwork = new int[1];
 
@@ -495,7 +518,7 @@ public class DArray2d extends Array {
     public static void computeEigen(Handle handle, int height,
             DArray inputMatrices, int ldInput, DArray resultValues,
             DArray workSpace, int batchCount, Fill cublasFillMode,
-            JacobiParams jp, IArray info) {
+            MySyevjInfo jp, IArray info) {
 
         JCusolverDn.cusolverDnDsyevjBatched(
                 handle.solverHandle(), // Handle to the cuSolver context
@@ -594,20 +617,30 @@ public class DArray2d extends Array {
         }
     }
 
-    public static void main(String[] args) {
-        try (Handle handle = new Handle()) {
+    public static void testLuFactorAndSolve() {
 
-            try (
-                    DArray data = new DArray(handle, 1, 5, 10); DArray2d a2d = new DArray2d(handle, new DArray[]{data});) {
+        int rows = 2, cols = 2;
 
-                handle.synch();
+        try (
+                Handle handle = new Handle();
+                IArray pivot = IArray.empty(2);
+                IArray info = IArray.empty(1);
+                DArray array = new DArray(handle, 1, 2, -1, 2);
+                DArray2d a2d = new DArray2d(handle, new DArray[]{array});
+                DArray b = DArray.empty(2);
+                DArray2d b2d = new DArray2d(handle, new DArray[]{b})) {
 
-                System.out.println(a2d);
-                System.out.println(a2d.get(handle, 0).toString());
-            }
+            a2d.luFactor(handle, rows, cols, pivot, info);
+            a2d.solveWithLUFactored(handle, false, rows, 1, rows, rows, pivot,
+                    b2d, info);
+            
+            System.out.println(a2d);
+            System.out.println(b2d);
 
         }
-
     }
 
+    public static void main(String[] args) {
+        testLuFactorAndSolve();
+    }
 }

@@ -368,6 +368,23 @@ public class Vector extends RealVector implements AutoCloseable {
 
         return mapTo;
     }
+    
+    /**
+     * Maps the inverse of each element in this vectot to the target. DO NOT
+     * pass this into mapTo. DO NOT use this method to map to itself.
+     *
+     * @param numerator The the numerator.  The elements in this vector become 
+     * the denominator, and the result is stored in numerator.
+     * @return The vector numerator, now divided by this.
+     */
+    public Vector mapEBEDivide(Vector numerator) {
+        
+        numerator.data.solveTriangularBandedSystem(
+                handle, true, false, false,
+                getDimension(), 0, data, 1, 1);
+
+        return numerator;
+    }
 
     /**
      * Computes the element-wise division of this vector by another vector.

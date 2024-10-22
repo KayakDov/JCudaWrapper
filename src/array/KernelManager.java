@@ -37,9 +37,9 @@ import resourceManagement.ResourceDealocator;
  *
  * @author E. Dov Neimand
  */
-public class Kernel implements AutoCloseable {
+public class KernelManager implements AutoCloseable {
 
-    private static final GPUMath math = new GPUMath();
+    private static final GPUMath kernels = new GPUMath();
     /**
      * The CUDA function handle for the loaded kernel.
      */
@@ -64,7 +64,7 @@ public class Kernel implements AutoCloseable {
      * "atan2xy").
      * @param n The total number of operations to determine the grid size.
      */
-    private Kernel(String fileName, String functionName) {
+    private KernelManager(String fileName, String functionName) {
         this.module = new CUmodule();
 
         File ptxFile = new File("src" + File.separator + "kernels" + File.separator + "ptx" + File.separator + fileName);
@@ -92,8 +92,8 @@ public class Kernel implements AutoCloseable {
      * folder.      *
      * @return The Kernel.
      */
-    public static Kernel get(String name) {
-        return math.put(name);
+    public static KernelManager get(String name) {
+        return kernels.put(name);
     }
 
     /**
@@ -114,7 +114,7 @@ public class Kernel implements AutoCloseable {
      * pointers to device pointers.
      * @return The {@code DArray} containing the processed results.
      */
-    public <T extends Array> T map(Handle handle, T input, int incInput, T output, int incOutput, int n, Pointer... additionalParmaters) {
+    public <T extends Array> T map(Handle handle, Array input, int incInput, T output, int incOutput, int n, Pointer... additionalParmaters) {
 
         
         NativePointerObject[] pointers = new NativePointerObject[additionalParmaters.length + 5];
@@ -124,7 +124,8 @@ public class Kernel implements AutoCloseable {
         pointers[3] = IArray.cpuPointer(incOutput);
         pointers[4] = IArray.cpuPointer(n);
         
-        System.arraycopy(additionalParmaters, 0, pointers, 5, additionalParmaters.length);
+        if(additionalParmaters.length > 0) 
+            System.arraycopy(additionalParmaters, 0, pointers, 5, additionalParmaters.length);
         
         Pointer kernelParameters = Pointer.to(pointers);
 
@@ -272,7 +273,7 @@ public class Kernel implements AutoCloseable {
      *
      * @author E. Dov Neimand
      */
-    private static class GPUMath extends HashMap<String, Kernel> implements AutoCloseable {
+    private static class GPUMath extends HashMap<String, KernelManager> implements AutoCloseable {
 
         /**
          * Puts a kernel with the given properties in the map.
@@ -284,13 +285,13 @@ public class Kernel implements AutoCloseable {
          * called.
          * @return The kernel with the given properties.
          */
-        public Kernel put(String name) {
+        public KernelManager put(String name) {
 
             String fileName = name + ".ptx", functionName = name + "Kernel";
 
-            Kernel put = get(name);
+            KernelManager put = get(name);
             if (put == null) {
-                put = new Kernel(fileName, functionName);
+                put = new KernelManager(fileName, functionName);
                 put(name, put);
             }
             return put;

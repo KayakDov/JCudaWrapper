@@ -57,6 +57,21 @@ public class IArray extends Array {
     public void get(Handle handle, int[] toCPUArray, int toStart, int fromStart, int length) {
         super.get(handle, Pointer.to(toCPUArray), toStart, fromStart, length);
     }
+    
+    
+    /**
+     * Exports the contents of this array to the cpu.
+     *
+     * @param handle The handle.
+     * @return The contents of this array stored in a cpu array.
+     */
+    public int[] get(Handle handle) {
+        
+        int[] toCPUArray = new int[length];
+        super.get(handle, Pointer.to(toCPUArray), 0, 0, length);
+        handle.synch();
+        return toCPUArray;
+    }
 
     /**
      * A pointer to a singleton array containing d.

@@ -6,6 +6,7 @@
 package resourceManagement;
 
 import java.lang.ref.Cleaner;
+import jcuda.NativePointerObject;
 import jcuda.jcusolver.JCusolverDn;
 import jcuda.jcusolver.syevjInfo;
 
@@ -32,7 +33,7 @@ import jcuda.jcusolver.syevjInfo;
  *
  * @author E. Dov Neimand
  */
-public class JacobiParams implements AutoCloseable {
+public class MySyevjInfo extends NativePointerObject implements AutoCloseable {
 
     /**
      * The syevjInfo structure that holds parameters for the Jacobi algorithm.
@@ -50,7 +51,7 @@ public class JacobiParams implements AutoCloseable {
      * structure necessary for the Jacobi algorithm's parameters. This structure
      * is registered for automatic cleanup.
      */
-    public JacobiParams() {
+    public MySyevjInfo() {
     
         params = new syevjInfo(); // Correct type for Jacobi parameters
 
@@ -66,8 +67,9 @@ public class JacobiParams implements AutoCloseable {
     }
 
     public static void main(String[] args) {
+        
         syevjInfo params = new syevjInfo();
-//        JCusolverDn.cusolverDnCreateSyevjInfo(params);
+        JCusolverDn.cusolverDnCreateSyevjInfo(params);
         
         
 //        JCusolverDn.cusolverDnDestroySyevjInfo(params);
