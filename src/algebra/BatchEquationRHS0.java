@@ -8,7 +8,7 @@ package algebra;
  */
 public class BatchEquationRHS0 {
 
-    private MatrixBatchStride lhs;
+    private MatrixStride lhs;
 
     /**
      * Constructs a set of equations of the form Ax = b.
@@ -16,7 +16,7 @@ public class BatchEquationRHS0 {
      * @param a The left hand side.
      * @param b The right hand side.
      */
-    public BatchEquationRHS0(MatrixBatchStride a, Vector b) {
+    public BatchEquationRHS0(MatrixStride a, Vector b) {
         this.lhs = a;
     }
     

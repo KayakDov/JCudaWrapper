@@ -8,8 +8,6 @@ import jcuda.driver.CUdeviceptr;
 import jcuda.jcublas.JCublas2;
 import jcuda.jcublas.cublasDiagType;
 import jcuda.jcublas.cublasFillMode;
-import jcuda.jcublas.cublasOperation;
-import jcuda.jcublas.cublasStatus;
 
 /**
  * This class provides functionalities to create and manipulate double arrays on
@@ -1112,4 +1110,24 @@ public class DArray extends Array {
         );
     }
 
+    /**
+     * Breaks this array into a a set of sub arrays.
+     * @param strideSize The length of each sub array.
+     * @return A representation of this array as a set of sub arrays.
+     */
+    public DBatchArray getStrided(int strideSize){
+        return new DBatchArray(pointer, length, strideSize, 0);
+    }
+    
+    
+    /**
+     * Breaks this array into a a set of sub arrays.
+     * @param handle
+     * @param strideSize The length of each sub array.
+     * @return A representation of this array as a set of sub arrays.
+     */
+    public DPointerArray getPointerArray(Handle handle, int strideSize){
+        return DPointerArray.empty(length/strideSize, strideSize)
+                .fill(handle, this, strideSize);
+    }
 }

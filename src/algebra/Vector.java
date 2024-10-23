@@ -13,7 +13,7 @@ import org.apache.commons.math3.linear.RealVectorChangingVisitor;
 import org.apache.commons.math3.linear.RealVectorPreservingVisitor;
 import resourceManagement.Handle;
 import array.DArray;
-import array.DArray2d;
+import array.DPointerArray;
 import array.DSingleton;
 
 /**
@@ -118,8 +118,11 @@ public class Vector extends RealVector implements AutoCloseable {
      * @return This vector.
      */
     public Vector fill(double scalar) {
-        if (scalar == 0 && inc == 1) data.fill0(handle);
-        else data.fill(handle, scalar, inc);
+        if (scalar == 0 && inc == 1) {
+            data.fill0(handle);
+        } else {
+            data.fill(handle, scalar, inc);
+        }
         return this;
     }
 
@@ -205,7 +208,9 @@ public class Vector extends RealVector implements AutoCloseable {
      */
     @Override
     public Vector copy() {
-        if (inc == 1) return new Vector(handle, data.copy(handle), inc);
+        if (inc == 1) {
+            return new Vector(handle, data.copy(handle), inc);
+        }
         Vector copy = new Vector(handle, getDimension());
         copy.data.set(handle, data, 0, 0, 1, inc, getDimension());
         return copy;
@@ -271,10 +276,10 @@ public class Vector extends RealVector implements AutoCloseable {
     public Vector addEbeMultiplyToSelf(double timesAB, Vector a, Vector b, double timesThis) {
         checkVectorLength(a, b);
 
-        data.multSymBandMatVec(handle, true, 
-                getDimension(), 0, 
-                timesAB, a.data, a.inc, 
-                b.data, b.inc, 
+        data.multSymBandMatVec(handle, true,
+                getDimension(), 0,
+                timesAB, a.data, a.inc,
+                b.data, b.inc,
                 timesThis, inc
         );
 
@@ -301,14 +306,21 @@ public class Vector extends RealVector implements AutoCloseable {
 
         mapMultiplyToSelf(timesThis);
 
-        if (a.length == 0) return this;
-        if (a.length == 1) return addEbeMultiplyToSelf(timesAB, this, a[0], 1);
-        if (a.length == 2) return addEbeMultiplyToSelf(timesAB, a[0], a[1], 1);
+        if (a.length == 0) {
+            return this;
+        }
+        if (a.length == 1) {
+            return addEbeMultiplyToSelf(timesAB, this, a[0], 1);
+        }
+        if (a.length == 2) {
+            return addEbeMultiplyToSelf(timesAB, a[0], a[1], 1);
+        }
 
         workSpace.addEbeMultiplyToSelf(timesAB, a[0], a[1], 0);
 
-        for (int i = 2; i < a.length; i++)
+        for (int i = 2; i < a.length; i++) {
             workSpace.mapAddEbeMultiplyToSelf(workSpace, a[i], 0);
+        }
 
         return addToMe(1, workSpace);
 
@@ -368,17 +380,17 @@ public class Vector extends RealVector implements AutoCloseable {
 
         return mapTo;
     }
-    
+
     /**
      * Maps the inverse of each element in this vectot to the target. DO NOT
      * pass this into mapTo. DO NOT use this method to map to itself.
      *
-     * @param numerator The the numerator.  The elements in this vector become 
+     * @param numerator The the numerator. The elements in this vector become
      * the denominator, and the result is stored in numerator.
      * @return The vector numerator, now divided by this.
      */
     public Vector mapEBEDivide(Vector numerator) {
-        
+
         numerator.data.solveTriangularBandedSystem(
                 handle, true, false, false,
                 getDimension(), 0, data, 1, 1);
@@ -418,8 +430,9 @@ public class Vector extends RealVector implements AutoCloseable {
      */
     @Override
     public void checkIndex(int index) {
-        if (index < 0 || index >= getDimension())
+        if (index < 0 || index >= getDimension()) {
             throw new OutOfRangeException(index, 0, getDimension() - 1);
+        }
     }
 
     /**
@@ -430,9 +443,11 @@ public class Vector extends RealVector implements AutoCloseable {
      * @throws DimensionMismatchException if the vectors have different lengths.
      */
     private void checkVectorLength(RealVector... vec) {
-        for (RealVector v : vec)
-            if (v.getDimension() != getDimension())
+        for (RealVector v : vec) {
+            if (v.getDimension() != getDimension()) {
                 throw new DimensionMismatchException(v.getDimension(), getDimension());
+            }
+        }
     }
 
     /**
@@ -496,8 +511,8 @@ public class Vector extends RealVector implements AutoCloseable {
      */
     public Vector getSubVector(int begin, int length, int increment) throws NotPositiveException, OutOfRangeException {
         return new Vector(
-                handle, 
-                data.subArray(begin * inc, inc * increment * (length - 1) + 1), 
+                handle,
+                data.subArray(begin * inc, inc * increment * (length - 1) + 1),
                 inc * increment
         );
     }
@@ -547,8 +562,9 @@ public class Vector extends RealVector implements AutoCloseable {
      *
      *///TODO: This method can be made faster with multi threading (multiple handles)
     public void setSubVector(int toIndex, Matrix m) {
-        for (int mCol = 0; mCol < getDimension(); mCol++)
+        for (int mCol = 0; mCol < getDimension(); mCol++) {
             setSubVector(toIndex + mCol * m.getHeight(), m.getColumnVector(mCol));
+        }
     }
 
     /**
@@ -567,8 +583,9 @@ public class Vector extends RealVector implements AutoCloseable {
      *
      *///TODO: This method can be made faster with multi threading (multiple handles)
     public void set(Matrix m) {
-        for (int mCol = 0; mCol < getDimension(); mCol++)
+        for (int mCol = 0; mCol < getDimension(); mCol++) {
             setSubVector(mCol * m.getHeight(), m.getColumnVector(mCol));
+        }
     }
 
     /**
@@ -602,8 +619,9 @@ public class Vector extends RealVector implements AutoCloseable {
      */
     @Override
     public void close() {
-        if (inc != 1)
+        if (inc != 1) {
             throw new IllegalAccessError("You are cleaning data from a sub vector");
+        }
         data.close();
     }
 
@@ -631,7 +649,9 @@ public class Vector extends RealVector implements AutoCloseable {
      * specified epsilon, false otherwise. *
      */
     public boolean equals(Vector other, double epsilon) {
-        if (other.getDimension() != getDimension()) return false;
+        if (other.getDimension() != getDimension()) {
+            return false;
+        }
         return subtract(other).getNorm() < epsilon;
     }
 
@@ -797,9 +817,15 @@ public class Vector extends RealVector implements AutoCloseable {
     private int getMinMaxInd(boolean isMax) {
         int argMaxAbsVal = data.argMaxAbs(handle, getDimension(), inc);
         double maxAbsVal = getEntry(argMaxAbsVal);
-        if (maxAbsVal == 0) return 0;
-        if (maxAbsVal > 0 && isMax) return argMaxAbsVal;
-        if (maxAbsVal < 0 && !isMax) return argMaxAbsVal;
+        if (maxAbsVal == 0) {
+            return 0;
+        }
+        if (maxAbsVal > 0 && isMax) {
+            return argMaxAbsVal;
+        }
+        if (maxAbsVal < 0 && !isMax) {
+            return argMaxAbsVal;
+        }
 
         try (Vector sameSign = mapAdd(maxAbsVal)) {
             return sameSign.data.argMinAbs(handle, getDimension(), inc);
@@ -1016,7 +1042,9 @@ public class Vector extends RealVector implements AutoCloseable {
             public Entry next() {
                 Entry next = entries[i];
                 i++;
-                while (i < entries.length && entries[i].getValue() == 0) i++;
+                while (i < entries.length && entries[i].getValue() == 0) {
+                    i++;
+                }
                 return next;
             }
         };
@@ -1146,14 +1174,19 @@ public class Vector extends RealVector implements AutoCloseable {
 
         walker.start(getDimension(), start, end);
 
-        if (start <= end) for (int i = start; i <= end; i++)
+        if (start <= end) {
+            for (int i = start; i <= end; i++) {
                 walker.visit(i, dataArray[i]);
-
-        else for (int i = start; i >= end; i--)
+            }
+        } else {
+            for (int i = start; i >= end; i--) {
                 walker.visit(i, dataArray[i]);
+            }
+        }
 
-        if (inc == 1) data.set(handle, dataArray);
-        else try (DArray temp = new DArray(handle, dataArray)) {
+        if (inc == 1) {
+            data.set(handle, dataArray);
+        } else try (DArray temp = new DArray(handle, dataArray)) {
             data.set(handle, temp, 0, 0, inc, 1, getDimension());
         }
 
@@ -1174,8 +1207,9 @@ public class Vector extends RealVector implements AutoCloseable {
 
         walker.start(getDimension(), 0, getDimension() - 1);
 
-        for (int i = 0; i < getDimension(); i++)
+        for (int i = 0; i < getDimension(); i++) {
             walker.visit(i, dataArray[i]);
+        }
 
         return walker.end();
     }
@@ -1222,8 +1256,9 @@ public class Vector extends RealVector implements AutoCloseable {
      * @return A vertical matrix representing this vector.
      */
     public Matrix vertical() {
-        if (inc != 1)
+        if (inc != 1) {
             throw new RuntimeException("The stride increment must be one.");
+        }
         return new Matrix(handle, data, getDimension(), 1);
     }
 
@@ -1297,19 +1332,21 @@ public class Vector extends RealVector implements AutoCloseable {
      *
      * @param timesAB Multiply this by the product of a and b.
      * @param a The first vector. A sub vector of a matrix or greater vector.
-     * @param aStride The increment to step to get to the next vector.
      * @param b The second vector. A sub vector of a matrix or greater vector.
-     * @param bStride The increment to step to get to the next vector.
      * @param timesThis multiply this before adding to it.
      */
-    public void addBatchVecVecMult(double timesAB, Vector a, int aStride, Vector b, int bStride, double timesThis) {
-        DArray2d.multMatMatStridedBatched(a.getHandle(), false, true,
-                1, a.getDimension(), 1,
+    public void addBatchVecVecMult(double timesAB, VectorStride a, VectorStride b, double timesThis) {
+
+        data.getStrided(1).multMatMatStridedBatched(
+                getHandle(),
+                false, false,
+                1, a.subVecLength, 1,
                 timesAB,
-                a.data, a.inc, aStride,
-                b.data, b.inc, bStride,
-                timesThis, data, inc, inc,
-                getDimension());
+                a.data, a.inc,
+                b.data, b.inc,
+                timesThis,
+                inc
+        );
     }
 
     /**
@@ -1317,18 +1354,17 @@ public class Vector extends RealVector implements AutoCloseable {
      * a and b.
      *
      * @param a The first vector. A sub vector of a matrix or greater vector.
-     * @param aStride The increment to step to get to the next vector.
+     *
      * @param b The second vector. A sub vector of a matrix or greater vector.
-     * @param bStride The increment to step to get to the next vector.
+     *
      */
-    public void setBatchVecVecMult(Vector a, int aStride, Vector b, int bStride) {
-        addBatchVecVecMult(1, a, aStride, b, bStride, 0);
+    public void setBatchVecVecMult(VectorStride a, VectorStride b) {
+        addBatchVecVecMult(1, a, b, 0);
     }
 
-    
-    public Vector[] parition(int numParts){
+    public Vector[] parition(int numParts) {
         Vector[] part = new Vector[numParts];
-        Arrays.setAll(part, i -> getSubVector(i, getDimension()/numParts, numParts));
+        Arrays.setAll(part, i -> getSubVector(i, getDimension() / numParts, numParts));
         return part;
     }
 }

@@ -6,7 +6,7 @@ import java.util.function.Consumer;
 
 import org.apache.commons.math3.exception.DimensionMismatchException;
 import resourceManagement.Handle;
-import array.DArray2d;
+import array.DPointerArray;
 import array.IArray;
 import array.KernelManager;
 
@@ -15,7 +15,7 @@ import array.KernelManager;
  * efficient operations such as batched matrix-matrix multiplications.
  *
  * <p>
- * This class provides a wrapper around the underlying {@link DArray2d} data
+ * This class provides a wrapper around the underlying {@link DPointerArray} data
  * structure and offers batch matrix operations that utilize the GPU for high
  * performance.
  * </p>
@@ -55,7 +55,7 @@ public class MatrixBatchPntrs implements AutoCloseable {
      * The underlying data structure that stores the batch of matrices in GPU
      * memory.
      */
-    private final DArray2d arrays;
+    private final DPointerArray arrays;
 
     /**
      * Indicates whether the matrices should be transposed during operations. If
@@ -73,36 +73,13 @@ public class MatrixBatchPntrs implements AutoCloseable {
      * @param arrays The underlying data arrays that store the batch of
      * matrices.
      */
-    public MatrixBatchPntrs(int height, int width, int colDist, DArray2d arrays) {
+    public MatrixBatchPntrs(int height, int width, int colDist, DPointerArray arrays) {
         this.height = height;
         this.width = width;
         this.colDist = colDist;
         this.arrays = arrays;
     }
 
-    /**
-     * Inserts pointers to a batch of matrices into the proffered device array.
-     *
-     * @param handle
-     * @param height The height (number of rows) of each matrix.
-     * @param width The width (number of columns) of each matrix.
-     * @param colDist The number of elements between the first element of each
-     * column (column stride or leading dimension).
-     * @param stepDown How much to step down from the previous pointer.
-     * @param stepRight Howe much to step right from the previous pointer.
-     * @param storePointersHere The underlying data arrays that store the batch
-     * of matrices.
-     * @param pointTo
-     */
-    public MatrixBatchPntrs(Handle handle, int height, int width, int colDist, int stepDown, int stepRight, DArray2d storePointersHere, Matrix pointTo) {
-        this(height, width, colDist, storePointersHere);
-        KernelManager.get("genPtrs").map(
-                handle,
-                pointTo.dArray(), stepDown + stepRight * colDist,
-                storePointersHere, 1,
-                storePointersHere.length
-        );
-    }
 
     /**
      * Creates a batch of matrices from the sub matrices of contains.
@@ -152,7 +129,7 @@ public class MatrixBatchPntrs implements AutoCloseable {
      * @param width The width of each matrix being pointed to.
      * @return
      */
-    public static DArray2d pointerSeter(Matrix contains, int downStride, int rightStride, int height, int width) {
+    public static DPointerArray pointerSeter(Matrix contains, int downStride, int rightStride, int height, int width) {
         return getDarray(contains, p -> {
             p.y += downStride;
             if (p.y >= contains.getHeight()) {
@@ -175,7 +152,7 @@ public class MatrixBatchPntrs implements AutoCloseable {
      * @param batchSize The number of sub matrices.
      * @return The data for each sub matrix.
      */
-    public static DArray2d getDarray(Matrix contains, Consumer<Point> step, int height, int width, int batchSize) {
+    public static DPointerArray getDarray(Matrix contains, Consumer<Point> step, int height, int width, int batchSize) {
         array.DArray[] arrays = new array.DArray[batchSize];
 
         Point p = new Point(0, 0);
@@ -184,7 +161,7 @@ public class MatrixBatchPntrs implements AutoCloseable {
             arrays[i] = contains.getSubMatrix(p.y, p.y + height, p.x,
                     p.x + width).dArray();
 
-        return new DArray2d(contains.getHandle(), arrays);
+        return new DPointerArray(contains.getHandle(), arrays);
     }
 
     /**
@@ -341,7 +318,7 @@ public class MatrixBatchPntrs implements AutoCloseable {
      * = k is positive, then i-th matrix is not positive definite and the
      * Cholesky factorization failed at row k.
      */
-    public void choleskyFactorization(Handle handle, IArray info, DArray2d.Fill fill) {
+    public void choleskyFactorization(Handle handle, IArray info, DPointerArray.Fill fill) {
         arrays.choleskyFactorization(handle, width, colDist, info, fill);
     }
 
@@ -378,7 +355,7 @@ public class MatrixBatchPntrs implements AutoCloseable {
      * @throws IllegalArgumentException if any of the dimensions (heightA,
      * widthBAndX, lda, ldb) are not positive.
      */
-    public void solveSymmetric(Handle handle, MatrixBatchPntrs b, IArray info, DArray2d.Fill fill) {
+    public void solveSymmetric(Handle handle, MatrixBatchPntrs b, IArray info, DPointerArray.Fill fill) {
         arrays.solveCholesky(handle, fill, height, colDist, b.arrays, b.colDist,
                 info);
     }

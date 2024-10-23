@@ -1,7 +1,8 @@
 package algebra;
 
 import array.DArray;
-import array.DArray2d;
+import array.DBatchArray;
+import array.DPointerArray;
 import resourceManagement.Handle;
 import java.awt.Dimension;
 import java.util.Arrays;
@@ -43,7 +44,7 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     /**
      * The underlying GPU data storage for this matrix.
      */
-    private final DArray data;
+    protected final DArray data;
 
     /**
      * Handle for managing JCublas operations, usually unique per thread.
@@ -169,8 +170,9 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
      * @return A new matrix that is the product of this matrix and the other.
      */
     public Matrix multiply(Matrix other) {
-        if (getWidth() != other.getHeight())
+        if (getWidth() != other.getHeight()) {
             throw new DimensionMismatchException(other.height, width);
+        }
 
         return new Matrix(handle, getHeight(), other.getWidth())
                 .multiplyAndSet(false, false, 1, this, other, 0);
@@ -273,8 +275,9 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
      * columns.
      */
     private final void set(int toRow, int toCol, double[][] matrix) {
-        for (int col = 0; col < Math.min(width, matrix.length); col++)
+        for (int col = 0; col < Math.min(width, matrix.length); col++) {
             data.set(handle, matrix[col], index(toRow, toCol + col));
+        }
     }
 
     /**
@@ -294,8 +297,9 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
      * @return A new matrix, the result of element-wise addition.
      */
     public Matrix add(Matrix other) {
-        if (other.height != height || other.width != width)
+        if (other.height != height || other.width != width) {
             throw new MatrixDimensionMismatchException(other.height, other.width, height, width);
+        }
 
         return new Matrix(handle, height, width).addAndSet(1, other, 1, this);
     }
@@ -324,10 +328,16 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
      */
     public Matrix addAndSet(Handle handle, boolean transA, boolean transB, double alpha, Matrix a, double beta, Matrix b) {
 
-        if (transA) checkRowCol(a.width - 1, a.height - 1);
-        else checkRowCol(a.height - 1, a.width - 1);
-        if (transB) checkRowCol(b.width - 1, b.height - 1);
-        else checkRowCol(b.height - 1, b.width - 1);
+        if (transA) {
+            checkRowCol(a.width - 1, a.height - 1);
+        } else {
+            checkRowCol(a.height - 1, a.width - 1);
+        }
+        if (transB) {
+            checkRowCol(b.width - 1, b.height - 1);
+        } else {
+            checkRowCol(b.height - 1, b.width - 1);
+        }
 
         data.addAndSet(handle, transA, transB, height, width, alpha, a.data, a.colDist, beta, b.data, b.colDist, colDist);
 
@@ -367,8 +377,9 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
      */
     @Override
     public Matrix subtract(RealMatrix m) throws MatrixDimensionMismatchException {
-        if (m.getRowDimension() != getRowDimension() || m.getColumnDimension() != getColumnDimension())
+        if (m.getRowDimension() != getRowDimension() || m.getColumnDimension() != getColumnDimension()) {
             throw new MatrixDimensionMismatchException(m.getRowDimension(), m.getColumnDimension(), getRowDimension(), getColumnDimension());
+        }
 
         try (Matrix mat = new Matrix(handle, m)) {
             return subtract(mat);
@@ -524,10 +535,12 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     private void checkSubMatrixParameters(int startRow, int endRow, int startColumn, int endColumn) throws OutOfRangeException, NumberIsTooSmallException {
         checkRowCol(endRow - 1, endColumn - 1);
         checkRowCol(startRow, startColumn);
-        if (startColumn > endColumn)
+        if (startColumn > endColumn) {
             throw new NumberIsTooSmallException(endColumn, startColumn, true);
-        if (startRow > endRow)
+        }
+        if (startRow > endRow) {
             throw new NumberIsTooSmallException(endRow, startRow, true);
+        }
 
     }
 
@@ -539,13 +552,15 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
 
         Dimension dim = subMatrixDimensions(startRow, endRow, startColumn, endColumn);
 
-        if (destination.length > dim.width)
+        if (destination.length > dim.width) {
             throw new MatrixDimensionMismatchException(destination.length, destination[0].length, height, width);
+        }
 
         Matrix subMatrix = getSubMatrix(startRow, endRow, startColumn, endColumn);
 
-        for (int j = 0; j < dim.width; j++)
+        for (int j = 0; j < dim.width; j++) {
             destination[j] = subMatrix.getColumn(j);
+        }
     }
 
     /**
@@ -574,8 +589,9 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
      * @throws OutOfRangeException
      */
     private void checkRow(int row) throws OutOfRangeException {
-        if (row < 0 || row >= height)
+        if (row < 0 || row >= height) {
             throw new OutOfRangeException(row, 0, height);
+        }
     }
 
     /**
@@ -585,8 +601,9 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
      * @throws OutOfRangeException
      */
     private void checkCol(int col) {
-        if (col < 0 || col >= width)
+        if (col < 0 || col >= width) {
             throw new OutOfRangeException(col, 0, width);
+        }
     }
 
     /**
@@ -607,8 +624,9 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
      * @param o To be checked for null values.
      */
     private void checkForNull(Object... o) {
-        if (Arrays.stream(o).anyMatch(obj -> obj == null))
+        if (Arrays.stream(o).anyMatch(obj -> obj == null)) {
             throw new NullArgumentException();
+        }
     }
 
     /**
@@ -618,19 +636,21 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     public Matrix getSubMatrix(int[] selectedRows, int[] selectedColumns) throws NullArgumentException, NoDataException, OutOfRangeException {
 
         checkForNull(selectedRows, selectedColumns);
-        if (selectedColumns.length == 0 || selectedRows.length == 0)
+        if (selectedColumns.length == 0 || selectedRows.length == 0) {
             throw new NoDataException();
+        }
 
         Matrix subMat = new Matrix(handle, selectedRows.length, selectedColumns.length);
 
         int toInd = 0;
 
-        for (int fromColInd : selectedColumns)
+        for (int fromColInd : selectedColumns) {
             for (int fromRowInd : selectedRows) {
                 checkRowCol(fromRowInd, fromColInd);
 
                 subMat.data.set(handle, data, toInd, index(fromRowInd, fromColInd), 1);
             }
+        }
 
         return subMat;
     }
@@ -671,7 +691,9 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
      * otherwise.
      */
     public boolean equals(Matrix other, double epsilon) {
-        if (height != other.height || width != other.width) return false;
+        if (height != other.height || width != other.width) {
+            return false;
+        }
 
         return subtract(other).getFrobeniusNorm() <= epsilon;
     }
@@ -681,8 +703,9 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
      */
     @Override
     public Matrix createMatrix(int height, int width) throws NotStrictlyPositiveException {
-        if (height <= 0 || width <= 0)
+        if (height <= 0 || width <= 0) {
             throw new NotStrictlyPositiveException(java.lang.Math.min(height, width));
+        }
 
         return new Matrix(handle, height, width);
     }
@@ -692,8 +715,9 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
      */
     @Override
     public Matrix copy() {
-        if (height == colDist)
+        if (height == colDist) {
             return new Matrix(handle, data.copy(handle), height, width);
+        }
 
         Matrix copy = new Matrix(handle, height, width);
 
@@ -731,8 +755,9 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
      */
     @Override
     public Matrix getRowMatrix(int row) throws OutOfRangeException {
-        if (row < 0 || row >= height)
+        if (row < 0 || row >= height) {
             throw new OutOfRangeException(row, 0, height);
+        }
 
         return new Matrix(
                 handle, data.subArray(index(row, 0)),
@@ -754,8 +779,9 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
      * @see Matrix#getRow(int)
      */
     public double[] getRow(int row, Handle handle) throws OutOfRangeException {
-        if (row < 0 || row >= height)
+        if (row < 0 || row >= height) {
             throw new OutOfRangeException(row, 0, height);
+        }
 
         Matrix rowMatrix = getRowMatrix(row);
 
@@ -779,8 +805,9 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
      */
     @Override
     public double[] getColumn(int column) throws OutOfRangeException {
-        if (column >= width || column < 0)
+        if (column >= width || column < 0) {
             throw new OutOfRangeException(column, 0, width);
+        }
 
         return getColumnMatrix(column).data.get(handle);
     }
@@ -820,7 +847,9 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
      */
     @Override
     public double getTrace() throws NonSquareMatrixException {
-        if (!isSquare()) throw new NonSquareMatrixException(width, height);
+        if (!isSquare()) {
+            throw new NonSquareMatrixException(width, height);
+        }
 
         return data.dot(handle, new DSingleton(handle, 1), 0, width + 1);
     }
@@ -851,8 +880,9 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
      */
     @Override
     public double[] operate(double[] v) throws DimensionMismatchException {
-        if (width != v.length)
+        if (width != v.length) {
             throw new DimensionMismatchException(v.length, width);
+        }
 
         Matrix vec = fromColVec(v, handle);
         Matrix result = multiply(vec);
@@ -905,15 +935,23 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
      */
     @Override
     public Matrix power(int p) throws NotPositiveException, NonSquareMatrixException {
-        if (p < 0) throw new NotPositiveException(p);
-        if (!isSquare()) throw new NonSquareMatrixException(width, height);
+        if (p < 0) {
+            throw new NotPositiveException(p);
+        }
+        if (!isSquare()) {
+            throw new NonSquareMatrixException(width, height);
+        }
 
-        if (p == 0) return identity(width, handle);
+        if (p == 0) {
+            return identity(width, handle);
+        }
 
         if (p % 2 == 0) {
             Matrix halfPow = power(p / 2);
             return halfPow.multiply(halfPow);
-        } else return multiply(power(p - 1));
+        } else {
+            return multiply(power(p - 1));
+        }
     }
 
     /**
@@ -922,8 +960,9 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     @Override
     public void setColumn(int column, double... array) throws OutOfRangeException, MatrixDimensionMismatchException {
         checkCol(column);
-        if (array.length != height)
+        if (array.length != height) {
             throw new MatrixDimensionMismatchException(0, array.length, 0, height);
+        }
 
         data.set(handle, array, index(0, column));
     }
@@ -933,8 +972,9 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
      */
     public void setColumnMatrix(int column, Matrix matrix) throws OutOfRangeException, MatrixDimensionMismatchException {
         checkCol(column);
-        if (matrix.height != height || matrix.width != 1)
+        if (matrix.height != height || matrix.width != 1) {
             throw new MatrixDimensionMismatchException(matrix.width, matrix.height, 1, height);
+        }
 
         data.set(handle, matrix.data, index(0, column), 0, height);
     }
@@ -969,8 +1009,9 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
     @Override
     public void setRow(int row, double[] array) throws OutOfRangeException, MatrixDimensionMismatchException {
         checkRow(row);
-        if (array.length != width)
+        if (array.length != width) {
             throw new MatrixDimensionMismatchException(array.length, 0, width, 0);
+        }
 
         try (Vector temp = new Vector(handle, array)) {
             setRowVector(row, temp);
@@ -1045,13 +1086,15 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
 
         double[] matrix = new double[sub.width * sub.height];
 
-        for (int toCol = 0; toCol <= sub.width; toCol++)
+        for (int toCol = 0; toCol <= sub.width; toCol++) {
             data.get(handle, matrix, sub.height * toCol, index(0, toCol + startColumn), height);
+        }
 
         Arrays.setAll(matrix, i -> visitor.visit(i % sub.height + startRow, i / sub.height + startColumn, matrix[i]));
 
-        for (int col = startColumn; col <= endColumn; col++)
+        for (int col = startColumn; col <= endColumn; col++) {
             data.set(handle, matrix, index(startRow, col), col - startColumn, sub.height);
+        }
 
         return visitor.end();
     }
@@ -1115,8 +1158,9 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
         double[] matrix = data.get(handle);
 
         visitor.start(height, width, 0, height, 0, width);
-        for (int i = 0; i < matrix.length; i++)
+        for (int i = 0; i < matrix.length; i++) {
             visitor.visit(i / width, i % width, matrix[i]);
+        }
 
         return visitor.end();
     }
@@ -1132,11 +1176,13 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
 
         visitor.start(height, width, 0, height, 0, width);
 
-        for (int toCol = 0; toCol <= sub.width; toCol++)
+        for (int toCol = 0; toCol <= sub.width; toCol++) {
             data.get(handle, matrix, toCol * sub.height, index(0, toCol + startColumn), sub.height);
+        }
 
-        for (int i = 0; i < matrix.length; i++)
+        for (int i = 0; i < matrix.length; i++) {
             visitor.visit(i % sub.height + startRow, i / sub.height + startColumn, matrix[i]);
+        }
 
         return visitor.end();
     }
@@ -1174,16 +1220,13 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
      *
      * @return A vector containing the dot product of each column and itself.
      */
-    public Vector columnsSquared() {
-        Vector colsSquared = new Vector(handle, width);
+    public Vector columnsSquared() {        
 
-        colsSquared.horizontal().multiplyBatch(true, false, 1, 
-                getColumnMatrix(0), colDist, 
-                getColumnMatrix(0), colDist, 
-                0, 1, 
-                width
-        );
-        return colsSquared;
+        MatrixStride columns = new MatrixStride(handle, data.getStrided(height), height);
+        
+        return new MatrixStride(handle, 1, width)
+                .multAndAdd(true, false, columns, columns, 1, 0)
+                .asVector();
     }
 
     /**
@@ -1228,8 +1271,9 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
      */
     @Override
     public void close() {
-        if (colDist != height)
+        if (colDist != height) {
             throw new IllegalAccessError("You are cleaning data from a sub Matrix");
+        }
         data.close();
     }
 
@@ -1328,34 +1372,5 @@ public class Matrix extends AbstractRealMatrix implements AutoCloseable {
         return colDist;
     }
 
-
-    /**
-     * Multiplies batches of matrices and adds the results to submatrices of
-     * this.
-     *
-     * @param transA Transpose the set of A matrices.
-     * @param transB Transpose the set of B matrices.
-     * @param timesAB Multiply their product.
-     * @param a The first matrix in the first set.
-     * @param strideA The step size for the first set of matrices.
-     * @param b The first matrix in the second set.
-     * @param strideB The step size for the second set of matrices.
-     * @param timesThis multiply this before adding to the AB product and
-     * setting this with the result.
-     * @param strideThis The step size for the result.
-     * @param batchCount The number of multiplications to take place.
-     */
-    public void multiplyBatch(boolean transA, boolean transB, double timesAB, Matrix a, int strideA, Matrix b, int strideB, double timesThis, int strideThis, int batchCount) {
-                
-        DArray2d.multMatMatStridedBatched(
-                handle, transB, transB,
-                a.height, a.width, b.width,
-                timesAB,
-                a.data, a.colDist, strideA,
-                b.data, b.colDist, strideB,
-                timesThis, data, colDist, strideThis,
-                batchCount
-        );
-    }
 
 }

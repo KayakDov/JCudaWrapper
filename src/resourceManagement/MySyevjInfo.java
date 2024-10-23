@@ -1,12 +1,11 @@
-
 // This code doesn't work:
 //     syevjInfo params = new syevjInfo();
 //     JCusolverDn.cusolverDnCreateSyevjInfo(params);
- 
 package resourceManagement;
 
 import java.lang.ref.Cleaner;
 import jcuda.NativePointerObject;
+import jcuda.Pointer;
 import jcuda.jcusolver.JCusolverDn;
 import jcuda.jcusolver.syevjInfo;
 
@@ -33,7 +32,7 @@ import jcuda.jcusolver.syevjInfo;
  *
  * @author E. Dov Neimand
  */
-public class MySyevjInfo extends NativePointerObject implements AutoCloseable {
+public class MySyevjInfo /*extends NativePointerObject*/ implements AutoCloseable {
 
     /**
      * The syevjInfo structure that holds parameters for the Jacobi algorithm.
@@ -45,18 +44,16 @@ public class MySyevjInfo extends NativePointerObject implements AutoCloseable {
      * syevjInfo structure is destroyed when no longer needed.
      */
 //    private final Cleaner.Cleanable cleanableParam;
-
     /**
      * Constructs a new {@code JacobiParams} instance, creating the syevjInfo
      * structure necessary for the Jacobi algorithm's parameters. This structure
      * is registered for automatic cleanup.
      */
     public MySyevjInfo() {
-    
+
         params = new syevjInfo(); // Correct type for Jacobi parameters
 
-//        JCusolverDn.cusolverDnCreateSyevjInfo(params); // Create parameter structure
-
+        JCusolverDn.cusolverDnCreateSyevjInfo(params); // Create parameter structure
 
         // Register the syevjInfo structure for cleanup
 //        cleanableParam = ResourceDealocator.register(
@@ -67,12 +64,12 @@ public class MySyevjInfo extends NativePointerObject implements AutoCloseable {
     }
 
     public static void main(String[] args) {
-        
+
         syevjInfo params = new syevjInfo();
         JCusolverDn.cusolverDnCreateSyevjInfo(params);
-        
-        
+
 //        JCusolverDn.cusolverDnDestroySyevjInfo(params);
+
     }
 
     /**
@@ -89,7 +86,7 @@ public class MySyevjInfo extends NativePointerObject implements AutoCloseable {
      * Closes the Jacobi parameters, ensuring that the resources are cleaned up.
      * This method is automatically called when the object is used in a
      * try-with-resources statement.
-
+     *
      */
     @Override
     public void close() {

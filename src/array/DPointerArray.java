@@ -26,7 +26,7 @@ import resourceManagement.MySyevjInfo;
  *
  * @author E. Dov Neimand
  */
-public class DArray2d extends Array {
+public class DPointerArray extends Array {
 
     private final int lengthOfArrays;
 
@@ -38,7 +38,7 @@ public class DArray2d extends Array {
      * @param numberOfArrays The number of arrays stored in this array. The
      * length of this array of arrays.
      */
-    private DArray2d(CUdeviceptr p, int lengthOfArrays, int numberOfArrays) {
+    private DPointerArray(CUdeviceptr p, int lengthOfArrays, int numberOfArrays) {
         super(p, numberOfArrays, PrimitiveType.POINTER);
         this.lengthOfArrays = lengthOfArrays;
     }
@@ -50,7 +50,7 @@ public class DArray2d extends Array {
      * @param arrays The arrays to be stored in this array. This array must be
      * nonempty.
      */
-    public DArray2d(Handle handle, DArray[] arrays) {
+    public DPointerArray(Handle handle, DArray[] arrays) {
         super(empty(arrays.length, PrimitiveType.POINTER), arrays.length,
                 PrimitiveType.POINTER);
 
@@ -69,9 +69,9 @@ public class DArray2d extends Array {
      * @return A new DArray with the specified size.
      * @throws ArrayIndexOutOfBoundsException if size is negative.
      */
-    public static DArray2d empty(int length, int lengthOfArrays) {
+    public static DPointerArray empty(int length, int lengthOfArrays) {
         checkPos(length);
-        return new DArray2d(Array.empty(length, PrimitiveType.POINTER),
+        return new DPointerArray(Array.empty(length, PrimitiveType.POINTER),
                 lengthOfArrays, length);
     }
 
@@ -131,7 +131,7 @@ public class DArray2d extends Array {
      * at the argument's index.
      * @return This.
      */
-    public DArray2d set(Handle handle, DArray source, IntUnaryOperator generator) {
+    public DPointerArray set(Handle handle, DArray source, IntUnaryOperator generator) {
         CUdeviceptr[] pointers = new CUdeviceptr[length];
         Arrays.setAll(pointers, i -> pointer(generator.applyAsInt(i)));
         set(handle, Pointer.to(pointers), 0, length);
@@ -142,8 +142,8 @@ public class DArray2d extends Array {
      * {@inheritDoc}
      */
     @Override
-    public DArray2d copy(Handle handle) {
-        DArray2d copy = empty(length, lengthOfArrays);
+    public DPointerArray copy(Handle handle) {
+        DPointerArray copy = empty(length, lengthOfArrays);
         get(handle, copy, 0, 0, length);
         return copy;
     }
@@ -182,8 +182,8 @@ public class DArray2d extends Array {
      * @param batchCount The number of matrix-matrix multiplications to compute.
      */
     public void multMatMatBatched(Handle handle, boolean transA, boolean transB,
-            int aRows, int aColsBRows, int bCols, double timesAB, DArray2d A,
-            int lda, DArray2d B, int ldb, double timesResult, int ldResult, int batchCount) {
+            int aRows, int aColsBRows, int bCols, double timesAB, DPointerArray A,
+            int lda, DPointerArray B, int ldb, double timesResult, int ldResult, int batchCount) {
 
         checkNull(handle, A, B);
         checkPos(aRows, aColsBRows, bCols, batchCount);
@@ -230,70 +230,6 @@ public class DArray2d extends Array {
 
     }
 
-//    /**
-    /**
-     * Performs batched matrix-matrix multiplication:
-     *
-     * <pre>
-     * Result[i] = alpha * op(A[i]) * op(B[i]) + timesResult * Result[i]
-     * </pre>
-     *
-     * Where op(A) and op(B) can be A and B or their transposes.
-     *
-     * This method computes multiple matrix-matrix multiplications at once,
-     * using strided data access, allowing for efficient batch processing.
-     *
-     * @param handle Handle to the cuBLAS library context.
-     * @param transA True if matrix A should be transposed, false otherwise.
-     * @param transB True if matrix B should be transposed, false otherwise.
-     * @param aRows The number of rows in matrix A.
-     * @param aColsBRows The number of columns in matrix A and the number of
-     * rows in matrix B.
-     * @param bCols The number of columns in matrix B.
-     * @param timesAB Scalar multiplier applied to the matrix-matrix product.
-     * @param matA Pointer to the batched matrix A in GPU memory.
-     * @param lda Leading dimension of matrix A (the number of elements between
-     * consecutive columns in memory).
-     * @param strideA Stride between consecutive matrices A in memory (number of
-     * elements).
-     * @param matB Pointer to the batched matrix B in GPU memory.
-     * @param ldb Leading dimension of matrix B (the number of elements between
-     * consecutive columns in memory).
-     * @param strideB Stride between consecutive matrices B in memory (number of
-     * elements).
-     * @param timesResult Scalar multiplier applied to each result matrix before
-     * adding the matrix-matrix product.
-     * @param result Pointer to the batched output matrix (result) in GPU
-     * memory.
-     * @param ldResult Leading dimension of the result matrix (the number of
-     * elements between consecutive columns in memory).
-     * @param strideResult Stride between consecutive result matrices in memory
-     * (number of elements).
-     * @param batchCount The number of matrix-matrix multiplications to compute.
-     *
-     */
-    public static void multMatMatStridedBatched(Handle handle, boolean transA, boolean transB,
-            int aRows, int aColsBRows, int bCols, double timesAB, DArray matA,
-            int lda, int strideA, DArray matB, int ldb, int strideB, double timesResult,
-            DArray result, int ldResult, long strideResult, int batchCount) {
-
-        checkNull(handle, matA, matB, result);
-        checkPos(aRows, bCols, ldb, ldResult);
-        matA.checkAgainstLength(strideA * (batchCount - 1));
-        matB.checkAgainstLength(strideB * (batchCount - 1));
-        result.checkAgainstLength(aRows * bCols * batchCount - 1);
-
-        JCublas2.cublasDgemmStridedBatched(
-                handle.get(),
-                DArray.transpose(transA), DArray.transpose(transB),
-                aRows, bCols, aColsBRows,
-                cpuPointer(timesAB),
-                matA.pointer, lda, strideA,
-                matB.pointer, ldb, strideB,
-                cpuPointer(timesResult), result.pointer, ldResult, strideResult,
-                batchCount
-        );
-    }
 
     /**
      * Performs batched eigenvector computation for symmetric matrices.
@@ -404,24 +340,9 @@ public class DArray2d extends Array {
      * matrix i is singular.
      */
     public void solveWithLUFactored(Handle handle, boolean transposeA, int colsAndRowsA,
-            int colsB, int ldThis, int ldb, IArray pivotArray, DArray2d B, IArray info) {
+            int colsB, int ldThis, int ldb, IArray pivotArray, DPointerArray B, IArray info) {
         checkNull(handle, pivotArray, B, info);
         checkPos(colsAndRowsA, colsB, ldThis, ldb);
-
-        System.out.println("array.DArray2d.solveWithLUFactored() says: ");
-        System.out.println("trnasposeA = " + transposeA);
-        System.out.println("colsAndRowsA = " + colsAndRowsA);
-        System.out.println("colsB = " + colsB);
-        System.out.println("ldThis = " + ldThis);
-        System.out.println("ldb = " + ldb);
-        System.out.println("pivotArray = " + pivotArray.toString());
-        System.out.println("B = " + B.toString());
-        System.out.println(
-                "memory allocated for each B pointer = " + B.lengthOfArrays);
-        System.out.println("info = " + info.toString());
-        System.out.println("this = " + toString());
-        System.out.println("batchSize = " + length);
-        System.out.println("inner array length = " + lengthOfArrays);
 
         int success = JCublas2.cublasDgetrsBatched(
                 handle.get(), 
@@ -439,112 +360,6 @@ public class DArray2d extends Array {
         }
     }
 
-
-    /* Doesn't work because Jacobiparms doesn't work.
-     * 
-     * Creates an auxiliary workspace for cusolverDnDsyevjBatched using
-     * cusolverDnDsyevjBatched_bufferSize.
-     *
-     * @param handle The cusolverDn handle.
-     * @param height The size of the matrices (nxn).
-     * @param input The device pointer to the input matrices.
-     * @param ldInput The leading dimension of the matrix A.
-     * @param resultValues The device pointer to the eigenvalue array.
-     * @param batchSize The number of matrices in the batch.
-     * @param fill How is the matrix stored.
-     * @param params The syevjInfo_t structure for additional parameters.
-     * @return A Pointer array where the first element is the workspace size,
-     * and the second element is the device pointer to the workspace.
-     */
-    public static int eigenWorkspaceSize(Handle handle,
-            int height,
-            DArray input,
-            int ldInput,
-            DArray resultValues,
-            int batchSize,
-            MySyevjInfo params,
-            Fill fill) {
-        int[] lwork = new int[1];
-
-        JCusolverDn.cusolverDnDsyevjBatched_bufferSize(
-                handle.solverHandle(),
-                cusolverEigMode.CUSOLVER_EIG_MODE_VECTOR,
-                fill.getFillMode(),
-                height,
-                input.pointer,
-                ldInput,
-                resultValues.pointer,
-                lwork,
-                params.getParams(),
-                batchSize
-        );
-
-        return lwork[0];
-    }
-
-//Doesn't work because JacobiParams doesn't work.
-    /**
-     * https://docs.nvidia.com/cuda/cusolver/index.html?highlight=cusolverDnCheevjBatched#cuSolverDN-lt-t-gt-syevjbatch
-     *
-     * Computes the eigenvalues and eigenvectors of a batch of symmetric
-     * matrices using the cuSolver library.
-     *
-     * This method leverages the cusolverDnDsyevjBatched function, which
-     * computes the eigenvalues and eigenvectors of symmetric matrices using the
-     * Jacobi method.
-     *
-     * This method creates and destroys it's own handle since it uses a
-     * different sort of handle then the handle class.
-     *
-     * The input matrices are replaced with the eigenvectors.
-     *
-     * Use createEigenWorkspace to calculate the size of the workspace.
-     *
-     * @param height The height and width of the matrices.
-     * @param inputMatrices The input matrices, which must be stored in GPU
-     * memory consecutively so that each matrix is column-major with leading
-     * dimension lda, so the formula for random access is a_k[i, j] = A[i +
-     * lda*j + lda*n*k]
-     * @param ldInput The leading dimension of the input matrices.
-     * @param resultValues Array to store the eigenvalues of the matrices.
-     * @param workSpace An auxilery workspace.
-     * @param batchCount The number of matrices in the batch.
-     * @param cublasFillMode Fill mode for the symmetric matrix (upper or
-     * lower).
-     * @param jp a recourse needed by this method.
-     * @param info An integer array. It's length should be batch count. It
-     * stores error messages.
-     */
-    public static void computeEigen(Handle handle, int height,
-            DArray inputMatrices, int ldInput, DArray resultValues,
-            DArray workSpace, int batchCount, Fill cublasFillMode,
-            MySyevjInfo jp, IArray info) {
-
-        JCusolverDn.cusolverDnDsyevjBatched(
-                handle.solverHandle(), // Handle to the cuSolver context
-                cusolverEigMode.CUSOLVER_EIG_MODE_VECTOR, // Compute both eigenvalues and eigenvectors
-                cublasFillMode.getFillMode(), // Indicates matrix is symmetric
-                height, inputMatrices.pointer, ldInput,
-                resultValues.pointer,
-                workSpace.pointer, workSpace.length,
-                info.pointer, // Array to store status info for each matrix
-                jp.getParams(), // Jacobi algorithm parameters
-                batchCount // Number of matrices in the batch
-        );
-//            // Step 5: Check for convergence status in info array
-//            int[] infoHost = new int[batchCount]; // Host array to fetch status
-//
-//            try (Handle hand = new Handle()) {
-//                info.get(hand, infoHost, 0, 0, batchCount);
-//            }
-//
-//            for (int i = 0; i < batchCount; i++) {
-//                if (infoHost[i] != 0) {
-//                    System.err.println("Matrix " + i + " failed to converge: info = " + infoHost[i]);
-//                }
-//            }
-
-    }
 
     /**
      * Solves a symmetric positive definite system of linear equations A * x =
@@ -583,7 +398,7 @@ public class DArray2d extends Array {
      * @throws IllegalArgumentException if any of the dimensions (heightA,
      * widthBAndX, lda, ldb) are not positive.
      */
-    public void solveCholesky(Handle handle, Fill fillA, int heightA, int lda, DArray2d b, int ldb, IArray info) {
+    public void solveCholesky(Handle handle, Fill fillA, int heightA, int lda, DPointerArray b, int ldb, IArray info) {
 
         checkNull(handle, fillA, b);
         checkPos(heightA, lda, ldb);
@@ -626,9 +441,9 @@ public class DArray2d extends Array {
                 IArray pivot = IArray.empty(2);
                 IArray info = IArray.empty(1);
                 DArray array = new DArray(handle, 1, 2, -1, 2);
-                DArray2d a2d = new DArray2d(handle, new DArray[]{array});
+                DPointerArray a2d = new DPointerArray(handle, new DArray[]{array});
                 DArray b = DArray.empty(2);
-                DArray2d b2d = new DArray2d(handle, new DArray[]{b})) {
+                DPointerArray b2d = new DPointerArray(handle, new DArray[]{b})) {
 
             a2d.luFactor(handle, rows, cols, pivot, info);
             a2d.solveWithLUFactored(handle, false, rows, 1, rows, rows, pivot,
@@ -639,7 +454,36 @@ public class DArray2d extends Array {
 
         }
     }
-
+    
+    /**
+     * Fills this arrays with pointers to the given array.
+     * @param handle
+     * @param source The array pointed to,
+     * @param stride The distance between the pointer targets.
+     * @return this
+     */
+    public DPointerArray fill(Handle handle, DArray source, int stride){
+        KernelManager.get("genPtrs").map(
+                handle, 
+                source, stride, 
+                this, 1, 
+                length
+        );
+        return this;
+    }
+    
+    
+    /**
+     * Fills this arrays with pointers to the given array.
+     * @param handle
+     * @param source The array pointed to,
+     * @return this
+     */
+    public DPointerArray fill(Handle handle, DBatchArray source){
+       return fill(handle, source, source.stride);
+    }
+    
+    
     public static void main(String[] args) {
         testLuFactorAndSolve();
     }

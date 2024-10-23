@@ -1,12 +1,8 @@
 package main;
 
 import algebra.Matrix;
-import algebra.Vector;
-import java.awt.Point;
-import java.awt.geom.Point2D;
-import java.util.Arrays;
 import array.DArray;
-import array.DArray2d;
+import array.DPointerArray;
 
 
 import resourceManagement.Handle;
@@ -273,7 +269,7 @@ public class DArrayTest {
 
         DArray expected = Matrix.identity(aRows, handle).asVector().append(Matrix.identity(aRows, handle).asVector()).dArray();
 
-        DArray2d.multMatMatStridedBatched(
+        DPointerArray.multMatMatStridedBatched(
                 handle, false, false,
                 aRows, aColsBRows, bCols,
                 timesAB,
